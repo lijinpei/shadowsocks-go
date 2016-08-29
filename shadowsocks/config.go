@@ -29,6 +29,8 @@ type Config struct {
 	// following options are only used by server
 	PortPassword map[string]string `json:"port_password"`
 	Timeout      int               `json:"timeout"`
+	LogFile    string
+	LogLevel     int
 
 	// following options are only used by client
 
@@ -36,6 +38,8 @@ type Config struct {
 	// instead of map to preserve the order.
 	ServerPassword [][]string `json:"server_password"`
 }
+
+var config Config = Config{LogLevel:1}
 
 var readTimeout time.Duration
 /*

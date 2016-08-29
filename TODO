@@ -1,0 +1,2 @@
+use getopt to parse command line argument
+multi-level/tee log
