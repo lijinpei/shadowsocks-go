@@ -8,6 +8,8 @@ install:
 #  - go get github.com/codahale/chacha20
   - cd cmd/shadowsocks-local
   - go build local.go
+  - ls -l
+  - ls -l $GOPATH
   - mv local $GOPATH/bin/shadowsocks-local
   - cd ../shadowsocks-server
   - go build server.go
