@@ -1,0 +1,6 @@
+[submodule "crypto"]
+	path = crypto
+	url = https://github.com/golang/crypto.git
+[submodule "chacha20"]
+	path = chacha20
+	url = https://github.com/codahale/chacha20.git
