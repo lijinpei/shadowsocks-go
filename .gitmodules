@@ -1,6 +1,0 @@
-[submodule "shadowsocks/chacha20"]
-	path = shadowsocks/chacha20
-	url = https://github.com/codahale/chacha20.git
-[submodule "shadowsocks/crypto"]
-	path = shadowsocks/crypto
-	url = https://github.com/golang/crypto.git
