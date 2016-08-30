@@ -16,7 +16,7 @@ type Config struct {
 	LocalPort  *int         `json:"local_port"`
 	Password   *string      `json:"password"`
 	Method     *string      `json:"method"` // encryption method
-	OneTA       *bool        `json:"one_time_auth"`   // one time auth
+	OneTA      *bool        `json:"one_time_auth"`   // one time auth
 	Verbose    *int         `json:"verbose"`
 	FastOpen   *bool        `json:"fast_open"`
 	Workers    *int         `json:"workers"`
@@ -33,6 +33,25 @@ type Config struct {
 
 func (config *Config) Init() {
 	// Default config value goes here
+	config.Server = new(string)
+	config.ServerPort = new(int)
+	config.Local = new(string)
+	config.LocalPort = new(int)
+	config.Password = new(string)
+	config.Method = new(string)
+	config.OneTA = new(bool)
+	config.Verbose = new(int)
+	config.FastOpen = new(bool)
+	config.Workers = new(int)
+	config.MngAdr = new(string)
+	config.User = new(string)
+	config.ForbIP = new([]string)
+	config.Daemon = new(string)
+	config.PidFile = new(string)
+	config.LogFile = new(string)
+	config.PreIPV6 = new(bool)
+	config.PortPassword = nil
+	config.Timeout = new(int)
 }
 
 func (config *Config) Print() {
@@ -80,8 +99,8 @@ func ParseConfig(path string) (config *Config, err error) {
 	return
 }
 
-func ParseArgs(lsLocal bool) {
-	config := &Config{}
+func ParseArgs(lsLocal bool) (config *Config) {
+	config = &Config{}
 	config.Init()
 	if getopt.IsSet('c') {
 		configFileName := "cnofig.json"
@@ -105,4 +124,6 @@ func ParseArgs(lsLocal bool) {
 	getopt.StringVarLong(config.MngAdr, "manager-address", 0)
 	getopt.StringVarLong(config.User, "user", 0)
 	getopt.ListVarLong(config.ForbIP, "forbidden", 0)
+	fmt.Print(config)
+	return
 }
