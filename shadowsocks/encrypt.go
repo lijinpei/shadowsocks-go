@@ -12,10 +12,10 @@ import (
 	"io"
 	"strings"
 
-	"github.com/codahale/chacha20"
-	"golang.org/x/crypto/blowfish"
-	"golang.org/x/crypto/cast5"
-	"golang.org/x/crypto/salsa20/salsa"
+	"./chacha20"
+	"./crypto/blowfish"
+	"./crypto/cast5"
+	"./crypto/salsa20/salsa"
 )
 
 var errEmptyPassword = errors.New("empty key")
