@@ -8,8 +8,10 @@ install:
 #  - go get github.com/codahale/chacha20
   - cd cmd/shadowsocks-local
   - go build local.go
+  - mv local shadowsocks-local
   - cd ../shadowsocks-server
   - go build server.go
+  - mv server shadowsocks-server
   - cd ../../
 script:
   - PATH=$PATH:$(pwd)/cmd/shadowsocks-local:$(pwd)/cmd/shadowsocks-server  bash -x ./script/test.sh
