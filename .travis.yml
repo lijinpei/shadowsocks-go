@@ -6,10 +6,13 @@ install:
 #  - go get golang.org/x/crypto/cast5
 #  - go get golang.org/x/crypto/salsa20
 #  - go get github.com/codahale/chacha20
-  - go build ./cmd/shadowsocks-local/local.go
-  - mv ./cmd/shadowsocks-local/local $GOPATH/bin/shadowsocks-local
-  - go build ./cmd/shadowsocks-server/server.go
-  - mv ./cmd/shadowsocks-server/server $GOPATH/bin/shadowsocks-server
+  - cd cmd/shadowsocks-local
+  - go build local.go
+  - mv local $GOPATH/bin/shadowsocks-local
+  - cd ../shadowsocks-server
+  - go build server.go
+  - mv server $GOPATH/bin/shadowsocks-server
+  - cd ../../
 script:
   - PATH=$PATH:$HOME/gopath/bin bash -x ./script/test.sh
 sudo: false
