@@ -2,86 +2,59 @@ package shadowsocks
 
 import (
 	"net"
+	"time"
 )
 
-type SocksServer interface {
-	Listen
-	Authenticate
-	Request
-	Read
-	Write
-	Bind
+type Packet []byte
+
+type SocksConn struct {
+	net.TCPConn
+	Pair *net.TCPConn
+	Chan *(chan packet)
 }
 
-type SocksClient interface {
-	Listen
-	Authenticate
-	Request
-	Read
-	Write
-	Bind
+type SocksHalf interface {
+	// Methods specific to lower half
+	// Upper half should implement dummy functions
+	UpperHalf() *SockerHalf
+	Listen(net.TCPAddr) error
+	BindListen(*SocksConn, net.TCPAddr) (*net.TCPListener error)
+	BindAccept(*SocksConn, *net.TCPListener) error
+	// Methods specifig to upper half
+	// Lower half should implement dummy functions
+	LowerHalf() *SocksHalf
+	Connect(net.TCPAddr) error
+	BindRequest(net.TCPAddr) error
+	// Methods shared by both half
+	Deal(net.TCPAddr) error
+	Relay(*SocksConn) error
+	UDPRelay(*SocksConn, *UDPConn) error
+	SetDeadline(time.Time) error
 }
 
-type Socks5Server struct {
+type SocksRelay interface {
+	Run(net.TCPAddr) error
+	Stop(net.TCPAddr) error
 }
 
-type Sockes5Client struct {
+/*
+type SocksUpperHalf interface {
+	LowerHalf() (SocksLowerHalf, error)
+	Connect(net.TCPAddr) error
+	Deal(net.TCPAddr) error
+	Bind(net.TCPAddr) error
+	Relay(*SocksConn) error
+	UDPRelay(*SocksConn, *UDPConn) error
+	SetDeadline(time.Time) error
 }
 
-type ShadowsocksServer struct {
+type SocksLowerHalf interface {
+	UpperHalf() (SockerLowerHalf, error)
+	Listen(net.TCPAddr) error
+	Deal(net.TCPAddr) error
+	BindRequest(net.TCPAddr) error
+	Relay(*SocksConn) error
+	UDPRelay(*SocksConn, *UDPConn) error
+	SetDeadline(time.Time) error
 }
-
-type ShadowsocksClient struct {
-}
-
-type RawServer struct {
-}
-
-type RawClient struct {
-}
-
-type Relay interface {
-	Listen
-	Connect
-	UpwardRead
-	UpwardWrite
-	DownwardRead
-	DownwardWrite
-}
-
-type SSLocal struct {
-}
-
-type SSServer struct {
-}
-
-func (*Socks5) Read(b []byte) (n int, err error) {
-}
-
-func (*Socks5) Write(b []byte) (n int. err error) {
-}
-
-func (*Socks5) Close() error {
-}
-
-func (*Socks5) LocalAddr() net.Addr {
-}
-
-func (*Socks5) RemoteAddr() net.Addr {
-}
-
-func (*Socks5) SetDeadline(t time.Time) error {
-}
-
-func (*Socks5) SetReadDeadline(t time.Time) error {
-}
-
-func (*Socks5) SetWriteDeadline(t time.Time) error {
-}
-
-func (*Socks5) Dial(network, address string) (net.Conn, error) {
-}
-
-func (*Socks5) DialTimeout(network, address string, timeout time.Duration) (Conn, error) {
-}
-
+*/
