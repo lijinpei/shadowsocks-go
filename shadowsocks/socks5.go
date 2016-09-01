@@ -14,10 +14,15 @@ const (
 
 // Socks5LowerHalf
 type S5LH struct{
+	UH *SocksHalf
 	Deadtime time.Time
 	IsRunning bool
+	PacketMaxLength int
 }
 
+func (s S5LH) Init {
+	s.PacketMaxLength = 
+}
 func (s S5LH) LowerrHalf() *SocksHalf {
 	return nil
 }
@@ -38,6 +43,18 @@ func (s S5LH) Listen(addr net.TCPAddr) error {
 		go s.Deal(&SocksConn{TCPConn:conn, Pair:nil, Chan:nil})
 	}
 	return nil
+}
+
+func (s S5LH) Relay(conn *SocksConn) error {
+	conn.SetDeadline(s.Deadtime)
+	for s.IsRunning {
+		b = make([]byte, s.PacketMaxLength)
+		n, err := conn.Read(b)
+		if nil != err {
+			return err
+		}
+		(*con.Chan) <- &b[:n]
+	}
 }
 
 func (s *S5LH) Deal(conn *SocksConn) error {
@@ -93,3 +110,59 @@ func (s *S5LH) Deal(conn *SocksConn) error {
 	conn.Close()
 	return err
 }
+
+type S5UH struct {
+	LH *ScoksHalf
+	Deadtime time.Time
+	IsRunning bool
+	MaxPacketLength int
+}
+
+func (S5UH) UpperHald() *SocksHalf {
+	return nil
+}
+
+func (S5UH) Deal(net.TCPAddr) error {
+	return err.New("Shouldn't call Deal on Socks5 Upper Half")
+{
+
+func (S5UH) Listen(net.TCPAddr) error {
+	return err.New("Shouldn't call Listen on Socks5 Upper Half")
+}
+
+func (S5UH) BindListen(*SocksConn, addr net.TCPAddr) (*net.TCPListener error) {
+	listener, err := net.ListenTCP("tcp", laddr *TCPAddr)
+	return listener, err
+}
+
+func (s S5UH) BindAccept(*SocksConn, listener *net.TCPListener) (*net.TCPConn error) {
+	err := listener.SetDeadline(s.Deadtime)
+	newConn, err := listener.Accept()
+	return newConn, err
+}
+
+func (S5UH) LowerHalf() *SocksHalf {
+	return S5UH.S5LH
+}
+
+func (s S5UH) Connect(addr *net.TCPAddr, conn *SocksConn) error {
+	// TODO: add timeout constraints
+	newConn, err := net.DialTCP("tcp", nil, addr)
+	return newConn, err
+}
+
+func (s S5UH) BindRequest(conn *Socks.Conn, addr net.TCPAddr) error {
+	
+}
+
+        BindListen(*SocksConn, net.TCPAddr) (*net.TCPListener error)
+        BindAccept(*SocksConn, *net.TCPListener) error
+        // Methods specifig to upper half
+        // Lower half should implement dummy functions
+        LowerHalf() *SocksHalf
+        Connect(net.TCPAddr) error
+        BindRequest(net.TCPAddr) error
+        // Methods shared by both half
+        Relay(*SocksConn) error
+        UDPRelay(*SocksConn, *UDPConn) error
+        SetDeadline(time.Time) error

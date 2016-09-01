@@ -16,17 +16,16 @@ type SocksConn struct {
 type SocksHalf interface {
 	// Methods specific to lower half
 	// Upper half should implement dummy functions
-	UpperHalf() *SockerHalf
+	UpperHalf() *SocksHalf
+	Deal(net.TCPAddr) error
 	Listen(net.TCPAddr) error
-	BindListen(*SocksConn, net.TCPAddr) (*net.TCPListener error)
-	BindAccept(*SocksConn, *net.TCPListener) error
 	// Methods specifig to upper half
 	// Lower half should implement dummy functions
 	LowerHalf() *SocksHalf
-	Connect(net.TCPAddr) error
-	BindRequest(net.TCPAddr) error
+	Connect(*net.TCPAddr, *SocksConn) error
+	BindListen(*SocksConn, net.TCPAddr) (*net.TCPListener error)
+	BindAccept(*SocksConn, *net.TCPListener) (*net.TCPConn error)
 	// Methods shared by both half
-	Deal(net.TCPAddr) error
 	Relay(*SocksConn) error
 	UDPRelay(*SocksConn, *UDPConn) error
 	SetDeadline(time.Time) error
