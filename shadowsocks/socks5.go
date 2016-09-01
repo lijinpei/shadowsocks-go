@@ -151,17 +151,7 @@ func (s S5UH) Connect(addr *net.TCPAddr, conn *SocksConn) error {
 	return newConn, err
 }
 
-func (s S5UH) BindRequest(conn *Socks.Conn, addr net.TCPAddr) error {
-	
-}
-
-        BindListen(*SocksConn, net.TCPAddr) (*net.TCPListener error)
-        BindAccept(*SocksConn, *net.TCPListener) error
-        // Methods specifig to upper half
-        // Lower half should implement dummy functions
-        LowerHalf() *SocksHalf
         Connect(net.TCPAddr) error
-        BindRequest(net.TCPAddr) error
         // Methods shared by both half
         Relay(*SocksConn) error
         UDPRelay(*SocksConn, *UDPConn) error
