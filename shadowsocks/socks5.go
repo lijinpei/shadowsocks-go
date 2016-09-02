@@ -115,7 +115,7 @@ func (s S5LH) Listen(addr *net.TCPAddr) error {
 	listener.SetDeadline(s.Deadtime)
 	for s.IsRunning {
 		conn, err := listener.AcceptTCP()
-		go s.Deal(&SocksConn{Down:conn, Up:nil, Chan:nil})
+		go s.Deal(&SocksConn{Down:conn, Up:nil, Chan:make(Chan *Packet, 10})
 	}
 	return nil
 }
@@ -138,7 +138,7 @@ func (s S5LH) BindAccept(*net.TCPListener, *ConnPair) (*net.TCPConn, error) {
 
 func (s S5LH) Relay(conn *ConnPair) error {
 	conn.Down.SetDeadline(s.Deadtime)
-	for s.IsRunning {
+	for {
 		b = make([]byte, s.PacketMaxLength)
 		n, err := conn.Down.Read(b)
 		if nil != err {
@@ -186,16 +186,17 @@ func (S5UH) BindListen(addr *net.TCPAddr, conn *ConnPair) (*net.TCPListener, err
 func (s S5UH) BindAccept(conn *SocksConn, listener *net.TCPListener) (*net.TCPConn, error) {
 	err := listener.SetDeadline(s.Deadtime)
 	newConn, err := listener.Accept()
+	conn.Up = newConn
 	return newConn, err
 }
 
-func (s S5UH) Relay(conn *SocksConn) error {
+func (s S5UH) Relay(conn *ConnPair) error {
 	for {
 		b := <- conn.Chann
 		if nil == b {
 			break
 		}
-		err := conn.Write(b)
+		err := conn.Up.Write(*b)
 		if nil != err {
 			return err
 		}
