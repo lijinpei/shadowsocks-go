@@ -21,17 +21,16 @@ type SocksHalf interface {
 	// Methods specific to lower half
 	// Upper half should implement dummy functions
 	UpperHalf() *SocksHalf
-	Deal(net.TCPAddr) error
-	Listen(net.TCPAddr) error
+	Deal(*ConnPair) error
+	Listen(*net.TCPAddr) error
 	// Methods specifig to upper half
 	// Lower half should implement dummy functions
 	LowerHalf() *SocksHalf
 	Connect(*net.TCPAddr, *ConnPair) error
-	BindListen(net.TCPAddr, *ConnPair) (*net.TCPListener, error)
+	BindListen(*net.TCPAddr, *ConnPair) (*net.TCPListener, error)
 	BindAccept(*net.TCPListener, *ConnPair) (*net.TCPConn, error)
 	// Methods shared by both half
 	Relay(*ConnPair) error
-i//	UDPRelay(, *UDPConn) error
+//	UDPRelay(, *UDPConn) error
 	SetDeadline(time.Duration) error
 }
-

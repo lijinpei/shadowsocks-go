@@ -12,6 +12,9 @@ const (
 	SOCKS_UDP_ASSOCIATE byte = 3
 )
 
+const (
+	ERR_SOCKS5_NO_AVAIL_AUTH error = error.New("No available socks5 authenticate method")
+)
 // Suppose only one upper half and lower half now
 
 // Socks5LowerHalf
@@ -20,12 +23,33 @@ type S5LH struct{
 	Deadtime time.Duration
 	IsRunning bool
 	PacketMaxLength uint
+	AuthRep []byte
 }
 
 func (s S5LH) Init() {
 	s.PacketMaxLength =2566
 	s.IsRunning = true
 	s.Deadtime, _ = time.ParseDuration("1s")
+	s.AuthRep = [...]byte{0x05, 0x00}
+}
+
+func (s S5LH) Authenticate(conn * SocksConn) error {
+	b := make([]byte, 2 + 255)
+	_, err := conn.Down.read(b)
+	if nil != err {
+		return err
+	}
+	err = ERR_SOCKS5_NO_AVAIL_AUTH
+	for _, v := range b {
+		if 0x00 == v {
+			err = nil
+			break
+		}
+	}
+	if nil != err {
+		return err
+	}
+	conn.Down.write(s.AuthRep)
 }
 
 func (s S5LH) UpperHalf() *SocksHalf {
@@ -86,7 +110,7 @@ func (s *S5LH) Deal(conn *SocksConn) error {
 	return err
 }
 
-func (s S5LH) Listen(addr net.TCPAddr) error {
+func (s S5LH) Listen(addr *net.TCPAddr) error {
 	listener := net.ListenTCP("tcp", addr)
 	listener.SetDeadline(s.Deadtime)
 	for s.IsRunning {
@@ -100,11 +124,11 @@ func (s S5LH) LowerrHalf() *SocksHalf {
 	return nil
 }
 
-func (s S5LH) Connect(net.TCPAddr) error {
+func (s S5LH) Connect(*net.TCPAddr, *ConnPair) error {
 	return error.New("Call connect on Socks5 Lower Half")
 }
 
-func (s S5LH) BindListen(net.TCPAddr, *ConnPair) (*net.TCPListener, error) {
+func (s S5LH) BindListen(*net.TCPAddr, *ConnPair) (*net.TCPListener, error) {
 	return error.New("Call BindListen on Socks5 Lower Half")
 }
 
@@ -131,19 +155,30 @@ type S5UH struct {
 	MaxPacketLength int
 }
 
-func (S5UH) UpperHald() *SocksHalf {
+func (S5UH) UpperHalf() *SocksHalf {
 	return nil
 }
 
-func (S5UH) Deal(net.TCPAddr) error {
+func (S5UH) Deal(*net.TCPAddr) error {
 	return err.New("Shouldn't call Deal on Socks5 Upper Half")
 }
 
-func (S5UH) Listen(net.TCPAddr) error {
+func (S5UH) Listen(*net.TCPAddr) error {
 	return err.New("Shouldn't call Listen on Socks5 Upper Half")
 }
 
-func (S5UH) BindListen(conn *SocksConn, addr net.TCPAddr) (*net.TCPListener, error) {
+func (S5UH) LowerHalf() *SocksHalf {
+	return S5UH.LH
+}
+
+func (s S5UH) Connect(addr *net.TCPAddr, conn *ConnPair) error {
+	// TODO: add timeout constraints
+	newConn, err := net.DialTCP("tcp", nil, addr)
+	conn.Up = newConn
+	return err
+}
+
+func (S5UH) BindListen(addr *net.TCPAddr, conn *ConnPair) (*net.TCPListener, error) {
 	listener, err := net.ListenTCP("tcp", laddr *TCPAddr)
 	return listener, err
 }
@@ -151,16 +186,6 @@ func (S5UH) BindListen(conn *SocksConn, addr net.TCPAddr) (*net.TCPListener, err
 func (s S5UH) BindAccept(conn *SocksConn, listener *net.TCPListener) (*net.TCPConn, error) {
 	err := listener.SetDeadline(s.Deadtime)
 	newConn, err := listener.Accept()
-	return newConn, err
-}
-
-func (S5UH) LowerHalf() *SocksHalf {
-	return S5UH.S5LH
-}
-
-func (s S5UH) Connect(addr *net.TCPAddr, conn *SocksConn) error {
-	// TODO: add timeout constraints
-	newConn, err := net.DialTCP("tcp", nil, addr)
 	return newConn, err
 }
 
@@ -178,7 +203,7 @@ func (s S5UH) Relay(conn *SocksConn) error {
 	return nil
 }
 
-func (s S5UH) SetDeadline(t time.Time) error {
+func (s S5UH) SetDeadline(t time.Duration) error {
 	s.Deadline = t
 	return nil
 }
