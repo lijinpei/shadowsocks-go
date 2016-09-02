@@ -151,8 +151,17 @@ func (s S5UH) Connect(addr *net.TCPAddr, conn *SocksConn) error {
 	return newConn, err
 }
 
-        Connect(net.TCPAddr) error
-        // Methods shared by both half
-        Relay(*SocksConn) error
-        UDPRelay(*SocksConn, *UDPConn) error
-        SetDeadline(time.Time) error
+func (s S5UH) Relay(conn *SocksConn) error {
+	for b :=<- conn.Chan {
+		err := conn.Write(b)
+		if nil != err {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s S5UH) SetDeadline(t time.Time) error {
+	s.Deadline = t
+	return nil
+}
