@@ -27,7 +27,7 @@ type S5LH struct{
 }
 
 func (s S5LH) Init() {
-	s.PacketMaxLength =2566
+	s.PacketMaxLength =256
 	s.IsRunning = true
 	s.Deadtime, _ = time.ParseDuration("1s")
 	s.AuthRep = [...]byte{0x05, 0x00}
@@ -183,7 +183,7 @@ func (S5UH) BindListen(addr *net.TCPAddr, conn *ConnPair) (*net.TCPListener, err
 	return listener, err
 }
 
-func (s S5UH) BindAccept(conn *SocksConn, listener *net.TCPListener) (*net.TCPConn, error) {
+func (s S5UH) BindAccept(conn *ConnPair, listener *net.TCPListener) (*net.TCPConn, error) {
 	err := listener.SetDeadline(s.Deadtime)
 	newConn, err := listener.Accept()
 	conn.Up = newConn
