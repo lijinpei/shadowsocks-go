@@ -1,10 +1,10 @@
-pacakge main
+package main
 
-import {
+import (
     "net"
     "fmt"
-    "github/shadowsocks/shadowsocks-go/shadowsocks"
-}
+    "github.com/shadowsocks/shadowsocks-go/shadowsocks"
+)
 
 type Socks5Relay struct {
     UF *shadowsocks.SocksHalf

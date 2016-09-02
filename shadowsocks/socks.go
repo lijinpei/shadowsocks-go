@@ -12,7 +12,7 @@ type Packet []byte
 type ConnPair struct {
 	Up *net.Conn
 	Down *net.Conn
-	Chan *(chan packet)
+	Chan *(chan Packet)
 }
 
 // SocksHalf represents half of relay server
@@ -26,7 +26,7 @@ type SocksHalf interface {
 	// Methods specifig to upper half
 	// Lower half should implement dummy functions
 	LowerHalf() *SocksHalf
-	Connect(*net.TCPAddr, *ConnPair) error
+	Connect(*net.IP, uint16, *ConnPair) error
 	BindListen(*net.TCPAddr, *ConnPair) (*net.TCPListener, error)
 	BindAccept(*net.TCPListener, *ConnPair) (*net.TCPConn, error)
 	// Methods shared by both half
