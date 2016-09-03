@@ -23,11 +23,88 @@ const (
 	ERR_SOCKS5_NO_AVAIL_AUTH Error = Error("no available socks5 authentication method")
 )
 
-// Suppose only one upper half and lower half now
+// RelayHF:
+// src -> c1
+// src <- c2
+// this function doesn't close connections
+func RelayHF(src *net.Conn, c1 c2 *chan (*[]byte), maxLen int, res int) error {
+	var errString string
+	resStr := " " + strconv.Itoa(res)
+	if Debug {
+		Log.Info("Socks5 Relay Half started " + strconv.Itoa(res))
+	}
 
+	t1 := true
+	t2 := true
+	for t1 && t2 {
+		if t1 {
+		var b *[]byte
+		b = <- c2
+		if nil == b {
+			if Debug {
+				Log.Info("Socks5 Relay to dst finished " + resStr)
+			}
+			t1 = false
+		}
+		src.SetWriteDeadline(time.Now().Add(s.Deadtime))
+		_, err = src.Write(*b)
+		if nil != err {
+			if Debug {
+				Log.Info("Socks5 Relay write to dst error " + err.Error() + resStr)
+			}
+			return err
+		}
+		}
+		if t2 {
+		//----------------------------------------------------------------------
+		b = make([]byte, maxLen)
+		src.SetReadDeadline(time.Now().Add(s.Deadtime))
+		_, err := src.Read(b)
+		if err == io.EOF {
+			c1 <- nil
+			if Debug {
+				Log.Info("Socks5 Relay read from src finished " + resStr)
+			}
+			t2 = false
+		}
+		if nil != err {
+			if Debug {
+				Log.Info("Socks5 Relay read from src error " + err.Error() + resStr)
+			}
+			return err
+		}
+		c1 <- b
+		}
+	}
+}
+
+func Relay(conn *SocksPair) error {
+	var c chan bool
+	var e1, e2 error
+	go func () {
+		e1 = RelayHF(conn.Down, conn.UpChan, conn.DownChan, 255, 1)
+		c <- true
+	}
+	go func () {
+		e2 = RelayHF(conn.Up, conn.DownChan, conn.UpChan, 255, 2)
+		c <- true
+	}
+	<- c
+	<- c
+	conn.Down.Close()
+	conn.Up.Close()
+	if nil != e1 {
+		return e1
+	}
+	if nil != e2 {
+		return e2
+	}
+	return nil
+}
+
+// Suppose only one upper half and lower half now
 // Socks5LowerHalf
 type S5LH struct{
-	SocksHalf
 	Deadtime time.Duration
 	IsRunning bool
 	PacketMaxLength uint
@@ -158,8 +235,7 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 			copy(repPacket[4:4+addrLen], bndAddr)
 			copy(repPacket[4+addrLen:], []byte{byte(bndPort >> 8), byte(bndPort & 0xff)})
 			_, err = conn.Down.Write(repPacket)
-			go s.SocksHalf.Relay(conn)
-			err = s.Relay(conn)
+			err = Relay(conn)
 		case SOCKS_BIND:
 			if Debug {
 				Log.Info("Deal bind")
@@ -192,49 +268,9 @@ func (s S5LH) Listen(addr *net.TCPAddr) error {
 		if Debug {
 			Log.Info("Accept connection")
 		}
-		go s.Deal(&ConnPair{Down:conn, Up:nil, Chan:make(chan *Packet, 20)})
+		go s.Deal(&ConnPair{Down:conn, Up:nil, UpChan:make(chan *Packet, 20), DownChan:make(chan *Packet, 20)})
 	}
 	return nil
-}
-
-/*
-func (s S5LH) Connect(addr *net.TCPAddr, conn *ConnPair) (*net.IP, uint16, error) {
-	return s.UH.Connect(*net.TCPAddr, *ConnPair)
-}
-
-func (s S5LH) BindListen(addr *net.TCPAddr, conn *ConnPair) (*net.TCPListener, error) {
-	return s.UH.BindListen(addr, conn)
-}
-
-func (s S5LH) BindAccept(listener *net.TCPListener, conn *ConnPair) (*net.TCPConn, error) {
-	return s.UH.BindAccept(listener, conn)
-}
-*/
-
-func (s S5LH) Relay(conn *ConnPair) error {
-	if Debug {
-		Log.Info("S5LH Relay started")
-	}
-	conn.Down.SetDeadline(time.Now().Add(s.Deadtime))
-	for {
-		b := make([]byte, s.PacketMaxLength)
-		_, err := conn.Down.Read(b)
-		if err == io.EOF {
-			conn.Chan <- nil
-			if Debug {
-				Log.Info("S5LH Relay finished")
-			}
-			return err
-		}
-		if nil != err {
-			if Debug {
-				Log.Info("S5LH Relay error " + err.Error())
-			}
-			return err
-		}
-		p := Packet(b)
-		conn.Chan <- &p
-	}
 }
 
 type S5UH struct {
@@ -244,15 +280,7 @@ type S5UH struct {
 	IsRunning bool
 	MaxPacketLength int
 }
-/*
-func (s S5UH) Deal(addr *net.TCPAddr) error {
-	return s.LH.Deal(addr)
-}
 
-func (s S5UH) Listen(addr *net.TCPAddr) error {
-	return s.LH.Listen(addr)
-}
-*/
 func (s S5LH) SetDeadline(t time.Duration) error {
 	s.Deadtime = t
 	return nil
@@ -308,34 +336,6 @@ func (s S5UH) BindAccept(listener *net.TCPListener, conn *ConnPair) error {
 	newConn, err := listener.Accept()
 	conn.Up = newConn
 	return err
-}
-
-func (s S5UH) Relay(conn *ConnPair) (err error) {
-	if Debug {
-		Log.Info("S5UH Relay started")
-	}
-	for {
-		b := <- conn.Chan
-		if nil == b {
-			err = conn.Up.Close()
-			if Debug {
-				var errString string
-				Log.Info("S5UH Relay finished")
-				if nil != err {
-					errString = err.Error()
-				}
-				Log.Info("S5UH Relay upward connection closed with result " + errString)
-			}
-			return err
-		}
-		_, err = conn.Up.Write(*b)
-		if nil != err {
-			if Debug {
-				Log.Info("S5UH Relay upward write error " + err.Error())
-			}
-			return err
-		}
-	}
 }
 
 func (s S5UH) SetDeadline(t time.Duration) error {

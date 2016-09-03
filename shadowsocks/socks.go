@@ -4,19 +4,17 @@ import (
 	"net"
 )
 
-// Packet represents a TCP/UDP packet
-type Packet []byte
-
 // ConnPair represents a pair of connections to be relayed
 type ConnPair struct {
 	Up net.Conn
 	Down net.Conn
-	Chan chan *Packet
+	UpChan chan *([]byte)
+	DownChan chan *([]byte)
 }
 
 // SocksHalf represents half of relay server
 // SocksHalf should be bound to nic
-type SocksHalf interface {
+type Socks interface {
 	// Methods specific to lower half
 	// upper half should call corresponding lower half's methods
 	Listen(*net.TCPAddr) error
@@ -29,4 +27,16 @@ type SocksHalf interface {
 	// Methods shared by both half
 	Relay(*ConnPair) error
 //	UDPRelay(, *UDPConn) error
+}
+
+type SocksLH {
+	Listen(*net.TCPAddr) error
+	//RelayLH(*ConnPair) error
+}
+
+type SocksUH {
+	Connect(*net.IP, uint16, *ConnPair) (net.IP, uint16, error)
+	BindListen(addr *net.TCPAddr, conn *ConnPair) (*net.TCPListener, error)
+	BindAccept(*net.TCPListener, *ConnPair) (error)
+	//RelayUH(*ConnPair) error
 }
