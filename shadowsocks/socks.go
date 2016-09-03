@@ -19,18 +19,15 @@ type ConnPair struct {
 // SocksHalf should be bound to nic
 type SocksHalf interface {
 	// Methods specific to lower half
-	// Upper half should implement dummy functions
-	UpperHalf() *SocksHalf
-	Deal(*ConnPair) error
+	// upper half should call corresponding lower half's methods
 	Listen(*net.TCPAddr) error
 	// Methods specifig to upper half
-	// Lower half should implement dummy functions
-	LowerHalf() *SocksHalf
+	// Lower half should call corresponding upper half's methods
 	Connect(*net.IP, uint16, *ConnPair) (*net.IP, uint16, error)
-	BindListen(*net.TCPAddr, *ConnPair) (*net.TCPListener, error)
-	BindAccept(*net.TCPListener, *ConnPair) (*net.TCPConn, error)
+	// addr: address to listen for bind as expected by client
+	BindListen(addr *net.TCPAddr, *ConnPair) (*net.TCPListener, error)
+	BindAccept(*net.TCPListener, *ConnPair) (error)
 	// Methods shared by both half
 	Relay(*ConnPair) error
 //	UDPRelay(, *UDPConn) error
-	SetDeadline(time.Duration) error
 }
