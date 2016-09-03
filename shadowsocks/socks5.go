@@ -41,10 +41,7 @@ func (s S5LH) Init() {
 
 func (s S5LH) Authenticate(conn * ConnPair) error {
 	b := make([]byte, 2 + 255)
-	_, err := (*(conn.Down)).Read(b) // the struct/(pointer to struct) rule cann't be applied recursively ???
-	if nil != err {
-		return err
-	}
+	n, err := conn.Down.Read(b) // the struct/(pointer to struct) rule cann't be applied recursively ???
 	err = ERR_SOCKS5_NO_AVAIL_AUTH
 	for _, v := range b {
 		if 0x00 == v {
@@ -52,69 +49,37 @@ func (s S5LH) Authenticate(conn * ConnPair) error {
 			break
 		}
 	}
-	if nil != err {
-		return err
-	}
 	_, err = (*(conn.Down)).Write(s.AuthRep[:])
 	return err
 }
 
 func (s S5LH) GetRequestType(conn *ConnPair) (cmd byte, addr net.IP, port uint16, err error) {
 	b1 := make([]byte, 4)
-	n, err := (*(conn.Down)).Read(b1)
-	if (4 != n) || (nil != err) {
-		// TODO
-		return
-	}
+	n, err := conn.Down.Read(b1)
 	cmd = b1[1]
 	atype := b1[3]
 	switch atype {
 		case 0x01:
 			addr = make([]byte, 4)
-			n, err = (*(conn.Down)).Read(addr)
-			if (4 != n) || (nil != err) {
-				// TODO
-				return
-			}
+			n, err = conn.Down.Read(addr)
 		case 0x03:
 			b2 := make([]byte, 1)
-			n, err = (*(conn.Down)).Read(b2)
-			if (1 != n) || (nil != err) {
-				// TODO
-				return
-			}
+			n, err = conn.Down.Read(b2)
 			l := b2[0]
 			b3 := make([]byte, l)
-			n, err = (*(conn.Down)).Read(b2)
-			if (int(l) != n) || (nil != err) {
-				// TODO
-				return
-			}
+			n, err = conn.Down.Read(b2)
 			host := string(b3[:])
 			var ips []net.IP
 			ips, err = net.LookupIP(host)
-			if nil != err {
-				// TODO
-				return
-			}
 			addr = ips[0]
 		case 0x04:
 			addr = make([]byte, 16)
-			n, err = (*(conn.Down)).Read(addr)
-			if (16 != n) || (nil != err) {
-				// TODO
-				return
-			}
+			n, err = conn.Down.Read(addr)
 		default:
-			// TODO
 			return
 	}
 	b4 := make([]byte, 2)
-	n, err = (*(conn.Down)).Read(b4)
-	if (2 != n) || (nil != err) {
-		// TODO
-		return
-	}
+	n, err = conn.Down.Read(b4)
 	port = (uint16(b4[0]) << 8) | uint16(b4[1])
 	return
 }
@@ -129,48 +94,26 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 		return
 	}
 	var rep byte
-	UH := s.UpperHalf()
 	switch cmd {
 		case SOCKS5_CONNECT:
-			var bndAddr *net.IP
-			var bndPort uint16
-			bndAddr, bndPort, err = (*UH).Connect(&addr, port, conn)
+			bndAddr, bndPort, err := (*UH).Connect(&addr, port, conn)
 			if nil != err {
 				rep = 1
 			}
 			addrLen := len(*bndAddr)
 			repPacket := make([]byte, addrLen + 6)
-			repPacket[0] = 0x05
-			repPacket[1] = 0x00
-			repPacket[2] = 0x00
-			repPacket[3] = byte(addrLen)
-			for i, v := range *bndAddr {
-				repPacket[4 + i] = v
-			}
-			repPacket[4 + addrLen] = byte(bndPort >> 8)
-			repPacket[5 + addrLen] = byte(bndPort & 0xff)
-			var n int
+			repPacket[0:4] = {0x05, 0x00, 0x00, byte(addrLen)}
+			repPacket[4:4+addrLen] = *bndAddr
+			repPacket[4+addrLen:] = {byte(bndPort >> 8), byte(bndPort & 0xff)}
 			n, err = (*(conn.Down)).Write(repPacket)
-			if nil != err {
-				return
-			}
-			go (*UH).Relay(conn)
+			go s.SocketHalf.Relay(conn)
 			err = s.Relay(conn)
 		case SOCKS_BIND:
 			var bindAddr *net.TCPAddr
-			var bindListener *net.TCPListener
 			bindListener, err = (*UH).BindListen(bindAddr, conn)
-			if nil != err {
-				rep = 1
-			}
 			err = UH.BindAccept(bind, conn)
-			if nil != err {
-				rep = 1
-			}
 			err = conn.Reply()
-			if nil != err {
-			}
-			go UH.Relay(conn.Pair)
+			go s.SocketHalf.Relay(conn)
 			err = s.Relay(conn)
 		case SOCKS5_UDP:
 /* TO BE IMPLEMENTED
@@ -241,6 +184,10 @@ func (s S5UH) Listen(addr *net.TCPAddr) error {
 func (s S5LH) SetDeadline(t time.Duration) error {
 	s.Deadline = t
 	return nil
+}
+
+func (s S5UH) Init() {
+	return
 }
 
 func (s S5UH) Connect(addr *net.IP, port uint16, conn *ConnPair) (bndAddr *net.IP, bndPort uint16, err error) {

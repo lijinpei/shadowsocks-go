@@ -10,8 +10,8 @@ type Packet []byte
 
 // ConnPair represents a pair of connections to be relayed
 type ConnPair struct {
-	Up *net.Conn
-	Down *net.Conn
+	Up net.Conn
+	Down net.Conn
 	Chan *(chan Packet)
 }
 
