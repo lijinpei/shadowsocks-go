@@ -3,6 +3,7 @@ package shadowsocks
 import (
 	"net"
 	"time"
+	"fmt"
 )
 
 const (
@@ -15,6 +16,10 @@ type Error string
 
 func (err Error) Error() string {
 	return string(err)
+}
+
+func dummyFmt() {
+	fmt.Print("123")
 }
 
 const (
@@ -32,7 +37,7 @@ type S5LH struct{
 	AuthRep [2]byte
 }
 
-func (s S5LH) Init() {
+func (s *S5LH) Init() {
 	s.PacketMaxLength =256
 	s.IsRunning = true
 	s.Deadtime, _ = time.ParseDuration("1s")
@@ -121,7 +126,7 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 
 func (s S5LH) Listen(addr *net.TCPAddr) error {
 	listener, _ := net.ListenTCP("tcp", addr)
-	listener.SetDeadline(time.Now().Add(s.Deadtime))
+	//listener.SetDeadline(time.Now().Add(s.Deadtime))
 	for s.IsRunning {
 		conn, _ := listener.AcceptTCP()
 		go s.Deal(&ConnPair{Down:conn, Up:nil, Chan:make(chan *Packet, 20)})
