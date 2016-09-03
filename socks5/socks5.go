@@ -3,13 +3,14 @@ package main
 import (
     "net"
     "fmt"
-    "github.com/shadowsocks/shadowsocks-go/shadowsocks"
+     ss "github.com/shadowsocks/shadowsocks-go/shadowsocks"
 )
 
 func main() {
-    var UH shadowsocks.S5UH
+    var UH ss.S5UH
     UH.Init()
-    var LH shadowsocks.S5LH
+    var LH ss.S5LH
+	ss.Log.Init("/tmp/ss.debug.log", ss.INFO)
     LH.Init()
     UH.SocksHalf = LH
     LH.SocksHalf = UH
@@ -19,4 +20,5 @@ func main() {
     }
     fmt.Print(LH.IsRunning)
     LH.Listen(TCPAddr)
+	ss.Log.Finish()
 }
