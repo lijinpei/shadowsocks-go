@@ -1,6 +1,7 @@
 package shadowsocks
 
 import (
+	"io"
 	"net"
 	"time"
 	"strconv"
@@ -74,12 +75,14 @@ func (s S5LH) GetRequestType(conn *ConnPair) (cmd byte, addr net.IP, port uint16
 	b1 := make([]byte, 4)
 	var n int
 	n, err = conn.Down.Read(b1)
-	if Debug {
-		Log.Info(strconv.Itoa(n))
-		Log.Info(string(b1))
-	}
 	cmd = b1[1]
 	atype := b1[3]
+	if Debug {
+		Log.Info("GetRequestType info")
+		Log.Info("b1 bytes read " + strconv.Itoa(n))
+		Log.Info("cmd " + strconv.Itoa(int(cmd)))
+		Log.Info("atype " + strconv.Itoa(int(atype)))
+	}
 	switch atype {
 		case 0x01:
 			addr = make([]byte, 4)
@@ -88,12 +91,22 @@ func (s S5LH) GetRequestType(conn *ConnPair) (cmd byte, addr net.IP, port uint16
 			b2 := make([]byte, 1)
 			_, err = conn.Down.Read(b2)
 			l := b2[0]
+			if Debug {
+				Log.Info("Domain name length " + strconv.Itoa(int(l)))
+			}
 			b3 := make([]byte, l)
-			_, err = conn.Down.Read(b2)
+			n, err = conn.Down.Read(b3)
 			host := string(b3[:])
+			if Debug {
+				Log.Info("Domain name length read " + strconv.Itoa(n))
+				Log.Info("Domain name " + host)
+			}
 			var ips []net.IP
 			ips, err = net.LookupIP(host)
 			addr = ips[0]
+			if Debug {
+				Log.Info("Ip address returned " + addr.String())
+			}
 		case 0x04:
 			addr = make([]byte, 16)
 			_, err = conn.Down.Read(addr)
@@ -113,7 +126,7 @@ func (s S5LH) GetRequestType(conn *ConnPair) (cmd byte, addr net.IP, port uint16
 		if nil != err {
 			errString = err.Error()
 		}
-		Log.Info("GetRequest results " + string(cmd) + " " + string(addr) + " " + string(port) + " " + errString)
+		Log.Info("GetRequest results " + strconv.Itoa(int(cmd)) + " " + addr.String() + " " + strconv.Itoa(int(port)) + " " + errString)
 	}
 	return
 }
@@ -200,13 +213,23 @@ func (s S5LH) BindAccept(listener *net.TCPListener, conn *ConnPair) (*net.TCPCon
 
 func (s S5LH) Relay(conn *ConnPair) error {
 	if Debug {
-		Log.Info("Relay started")
+		Log.Info("S5LH Relay started")
 	}
 	conn.Down.SetDeadline(time.Now().Add(s.Deadtime))
 	for {
 		b := make([]byte, s.PacketMaxLength)
 		_, err := conn.Down.Read(b)
+		if err == io.EOF {
+			conn.Chan <- nil
+			if Debug {
+				Log.Info("S5LH Relay finished")
+			}
+			return err
+		}
 		if nil != err {
+			if Debug {
+				Log.Info("S5LH Relay error " + err.Error())
+			}
 			return err
 		}
 		p := Packet(b)
@@ -244,11 +267,17 @@ func (s S5UH) Connect(addr *net.IP, port uint16, conn *ConnPair) (bndAddr net.IP
 		Log.Info("Connect started")
 	}
 	dialer := net.Dialer{Timeout:s.Deadtime, DualStack:false}
-	address := addr.String() + ":" + string(port)
+	address := addr.String() + ":" + strconv.Itoa(int(port))
+	if Debug {
+		Log.Info("Connect address " + address)
+	}
 	network := "tcp"
 	var newConn net.Conn
 	newConn, err = dialer.Dial(network, address)
 	if nil != err {
+		if Debug {
+			Log.Info("Connect error " + err.Error())
+		}
 		return
 	}
 	localAddr := newConn.LocalAddr().String()
@@ -257,6 +286,9 @@ func (s S5UH) Connect(addr *net.IP, port uint16, conn *ConnPair) (bndAddr net.IP
 	bndAddr = tcpAddr.IP
 	bndPort = uint16(tcpAddr.Port)
 	conn.Up = newConn
+	if Debug {
+		Log.Info("Connect finished")
+	}
 	return
 }
 
@@ -278,21 +310,32 @@ func (s S5UH) BindAccept(listener *net.TCPListener, conn *ConnPair) error {
 	return err
 }
 
-func (s S5UH) Relay(conn *ConnPair) error {
+func (s S5UH) Relay(conn *ConnPair) (err error) {
 	if Debug {
-		Log.Info("Relay started")
+		Log.Info("S5UH Relay started")
 	}
 	for {
 		b := <- conn.Chan
 		if nil == b {
-			break
+			err = conn.Up.Close()
+			if Debug {
+				var errString string
+				Log.Info("S5UH Relay finished")
+				if nil != err {
+					errString = err.Error()
+				}
+				Log.Info("S5UH Relay upward connection closed with result " + errString)
+			}
+			return err
 		}
-		_, err := conn.Up.Write(*b)
+		_, err = conn.Up.Write(*b)
 		if nil != err {
+			if Debug {
+				Log.Info("S5UH Relay upward write error " + err.Error())
+			}
 			return err
 		}
 	}
-	return nil
 }
 
 func (s S5UH) SetDeadline(t time.Duration) error {
