@@ -8,8 +8,8 @@ import (
 type ConnPair struct {
 	Up net.Conn
 	Down net.Conn
-	UpChan chan *([]byte)
-	DownChan chan *([]byte)
+	UpChan chan *[]byte
+	DownChan chan *[]byte
 }
 
 // SocksHalf represents half of relay server
@@ -29,12 +29,12 @@ type Socks interface {
 //	UDPRelay(, *UDPConn) error
 }
 
-type SocksLH {
+type SocksLH interface {
 	Listen(*net.TCPAddr) error
 	//RelayLH(*ConnPair) error
 }
 
-type SocksUH {
+type SocksUH interface {
 	Connect(*net.IP, uint16, *ConnPair) (net.IP, uint16, error)
 	BindListen(addr *net.TCPAddr, conn *ConnPair) (*net.TCPListener, error)
 	BindAccept(*net.TCPListener, *ConnPair) (error)

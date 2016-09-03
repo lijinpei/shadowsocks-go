@@ -12,6 +12,8 @@ func main() {
     var LH ss.S5LH
 	ss.Log.Init("/tmp/ss.debug.log", ss.INFO)
     LH.Init()
+    UH.SocksLH = LH
+    LH.SocksUH = UH
     TCPAddr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:1081")
     if nil != err {
         fmt.Println("Error get TCP Address")

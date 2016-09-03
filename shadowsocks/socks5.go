@@ -5,7 +5,13 @@ import (
 	"net"
 	"time"
 	"strconv"
+	"errors"
+	"fmt"
 )
+
+func dummyFmt () {
+	fmt.Println("123")
+}
 
 const (
 	SOCKS5_CONNECT      byte = 1
@@ -27,8 +33,7 @@ const (
 // src -> c1
 // src <- c2
 // this function doesn't close connections
-func RelayHF(src *net.Conn, c1 c2 *chan (*[]byte), maxLen int, res int) error {
-	var errString string
+func RelayHF(src net.Conn, c1, c2 chan *[]byte, maxLen int, deadTime time.Duration, res int) (err error) {
 	resStr := " " + strconv.Itoa(res)
 	if Debug {
 		Log.Info("Socks5 Relay Half started " + strconv.Itoa(res))
@@ -46,20 +51,20 @@ func RelayHF(src *net.Conn, c1 c2 *chan (*[]byte), maxLen int, res int) error {
 			}
 			t1 = false
 		}
-		src.SetWriteDeadline(time.Now().Add(s.Deadtime))
+		src.SetWriteDeadline(time.Now().Add(deadTime))
 		_, err = src.Write(*b)
 		if nil != err {
 			if Debug {
 				Log.Info("Socks5 Relay write to dst error " + err.Error() + resStr)
 			}
-			return err
+			return
 		}
 		}
 		if t2 {
 		//----------------------------------------------------------------------
-		b = make([]byte, maxLen)
-		src.SetReadDeadline(time.Now().Add(s.Deadtime))
-		_, err := src.Read(b)
+		b := make([]byte, maxLen)
+		src.SetReadDeadline(time.Now().Add(deadTime))
+		_, err = src.Read(b)
 		if err == io.EOF {
 			c1 <- nil
 			if Debug {
@@ -71,24 +76,25 @@ func RelayHF(src *net.Conn, c1 c2 *chan (*[]byte), maxLen int, res int) error {
 			if Debug {
 				Log.Info("Socks5 Relay read from src error " + err.Error() + resStr)
 			}
-			return err
+			return
 		}
-		c1 <- b
+		c1 <- &b
 		}
 	}
+	return errors.New("Execution shouldn't come here")
 }
 
-func Relay(conn *SocksPair) error {
+func Relay(conn *ConnPair, deadtime time.Duration) error {
 	var c chan bool
 	var e1, e2 error
 	go func () {
-		e1 = RelayHF(conn.Down, conn.UpChan, conn.DownChan, 255, 1)
+		e1 = RelayHF(conn.Down, conn.UpChan, conn.DownChan, 255, deadtime, 1)
 		c <- true
-	}
+	} ()
 	go func () {
-		e2 = RelayHF(conn.Up, conn.DownChan, conn.UpChan, 255, 2)
+		e2 = RelayHF(conn.Up, conn.DownChan, conn.UpChan, 255, deadtime, 2)
 		c <- true
-	}
+	} ()
 	<- c
 	<- c
 	conn.Down.Close()
@@ -105,6 +111,7 @@ func Relay(conn *SocksPair) error {
 // Suppose only one upper half and lower half now
 // Socks5LowerHalf
 type S5LH struct{
+	SocksUH
 	Deadtime time.Duration
 	IsRunning bool
 	PacketMaxLength uint
@@ -224,8 +231,11 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 		case SOCKS5_CONNECT:
 			if Debug {
 				Log.Info("Deal connect")
+				Log.Info("GetRequest results " + strconv.Itoa(int(cmd)) + " " + addr.String() + " " + strconv.Itoa(int(port)))
 			}
-			bndAddr, bndPort, err := s.Connect(&addr, port, conn)
+			var bndAddr net.IP
+			var bndPort uint16
+			bndAddr, bndPort, err = s.Connect(&addr, port, conn)
 			if nil != err {
 				return err
 			}
@@ -235,7 +245,7 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 			copy(repPacket[4:4+addrLen], bndAddr)
 			copy(repPacket[4+addrLen:], []byte{byte(bndPort >> 8), byte(bndPort & 0xff)})
 			_, err = conn.Down.Write(repPacket)
-			err = Relay(conn)
+			err = Relay(conn, s.Deadtime)
 		case SOCKS_BIND:
 			if Debug {
 				Log.Info("Deal bind")
@@ -244,8 +254,6 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 			bindListener, _ := s.BindListen(bindAddr, conn)
 			s.BindAccept(bindListener, conn)
 			// reply
-			go s.SocksHalf.Relay(conn)
-			s.Relay(conn)
 		case SOCKS_UDP_ASSOCIATE:
 			if Debug {
 				Log.Info("Deal udp associate")
@@ -268,14 +276,13 @@ func (s S5LH) Listen(addr *net.TCPAddr) error {
 		if Debug {
 			Log.Info("Accept connection")
 		}
-		go s.Deal(&ConnPair{Down:conn, Up:nil, UpChan:make(chan *Packet, 20), DownChan:make(chan *Packet, 20)})
+		go s.Deal(&ConnPair{Down:conn, Up:nil, UpChan:make(chan *[]byte, 20), DownChan:make(chan *[]byte, 20)})
 	}
 	return nil
 }
 
 type S5UH struct {
-	// LH SocksHalf
-	SocksHalf
+	SocksLH
 	Deadtime time.Duration
 	IsRunning bool
 	MaxPacketLength int
