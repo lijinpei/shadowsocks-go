@@ -26,7 +26,7 @@ type SocksHalf interface {
 	// Methods specifig to upper half
 	// Lower half should implement dummy functions
 	LowerHalf() *SocksHalf
-	Connect(*net.IP, uint16, *ConnPair) error
+	Connect(*net.IP, uint16, *ConnPair) (*net.IP, uint16, error)
 	BindListen(*net.TCPAddr, *ConnPair) (*net.TCPListener, error)
 	BindAccept(*net.TCPListener, *ConnPair) (*net.TCPConn, error)
 	// Methods shared by both half

@@ -123,45 +123,58 @@ func (s S5LH) GetRequestType(conn *ConnPair) (cmd byte, addr net.IP, port uint16
 	return
 }
 
-func (s *S5LH) Deal(conn *ConnPair) error {
-	var err error
+func (s *S5LH) Deal(conn *ConnPair) (err error) {
 	err = s.Authenticate(conn)
 	if nil != err {
-		return err
+		return
 	}
 	cmd, addr, port, err := s.GetRequestType(conn)
 	if nil != err {
-		return err
+		return
 	}
 	var rep byte
 	UH := s.UpperHalf()
 	switch cmd {
 		case SOCKS5_CONNECT:
+			var bndAddr *net.IP
+			var bndPort uint16
 			bndAddr, bndPort, err = (*UH).Connect(&addr, port, conn)
 			if nil != err {
 				rep = 1
 			}
-			err = conn.Reply(rep)
-			if nil != err {
-				conn.Close()
-				return repErr
+			addrLen := len(*bndAddr)
+			repPacket := make([]byte, addrLen + 6)
+			repPacket[0] = 0x05
+			repPacket[1] = 0x00
+			repPacket[2] = 0x00
+			repPacket[3] = byte(addrLen)
+			for i, v := range *bndAddr {
+				repPacket[4 + i] = v
 			}
-			go UHF.Relay(conn.Pair)
+			repPacket[4 + addrLen] = byte(bndPort >> 8)
+			repPacket[5 + addrLen] = byte(bndPort & 0xff)
+			var n int
+			n, err = (*(conn.Down)).Write(repPacket)
+			if nil != err {
+				return
+			}
+			go (*UH).Relay(conn)
 			err = s.Relay(conn)
 		case SOCKS_BIND:
-			bind, err = UHF.BindLisen(conn, addr, port)
+			var bindAddr *net.TCPAddr
+			var bindListener *net.TCPListener
+			bindListener, err = (*UH).BindListen(bindAddr, conn)
 			if nil != err {
 				rep = 1
 			}
-			err = UHF.BindAccept(bind, conn)
+			err = UH.BindAccept(bind, conn)
 			if nil != err {
 				rep = 1
 			}
 			err = conn.Reply()
 			if nil != err {
 			}
-			bindConn := s.Bind()
-			go UHF.Relay(conn.Pair)
+			go UH.Relay(conn.Pair)
 			err = s.Relay(conn)
 		case SOCKS5_UDP:
 /* TO BE IMPLEMENTED
@@ -174,7 +187,7 @@ func (s *S5LH) Deal(conn *ConnPair) error {
 */
 	}
 	conn.Close()
-	return err
+	return
 }
 
 func (s S5LH) Listen(addr *net.TCPAddr) error {
@@ -191,7 +204,7 @@ func (s S5LH) LowerrHalf() *SocksHalf {
 	return nil
 }
 
-func (s S5LH) Connect(*net.TCPAddr, *ConnPair) error {
+func (s S5LH) Connect(*net.TCPAddr, *ConnPair) (bndAddr *net.IP, bndPort uint16, err error) {
 	return Error("Call connect on Socks5 Lower Half")
 }
 
