@@ -7,20 +7,24 @@ import (
 )
 
 type Socks5Relay struct {
-    UF *shadowsocks.SocksHalf
-    DF *shadowsocks.SocksHalf
+    UH shadowsocks.SocksHalf
+    LH shadowsocks.SocksHalf
+}
 
 func main() {
-    UF := new(shadowsocks.SocksHalf)
-    UF.Init()
-    DF := new(shadowsocks.SocksHalf)
-    DF.Init()
-    UF.DF = DF
-    DF.UF = UF
+    var relay Socks5Relay
+    var UH shadowsocks.S5UH
+    UH.Init()
+    var LH shadowsocks.S5LH
+    LH.Init()
+    UH.SocksHalf = relay.LH
+    LH.SocksHalf = relay.UH
+    relay.UH = UH
+    relay.LH = LH
 
     TCPAddr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:1081")
     if nil != err {
         fmt.Println("Error get TCP Address")
     }
-    DF.Listen(TCPAddr)
+    relay.LH.Listen(TCPAddr)
 }

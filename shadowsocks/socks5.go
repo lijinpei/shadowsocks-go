@@ -41,7 +41,7 @@ func (s S5LH) Init() {
 
 func (s S5LH) Authenticate(conn * ConnPair) error {
 	b := make([]byte, 2 + 255)
-	n, err := conn.Down.Read(b) // the struct/(pointer to struct) rule cann't be applied recursively ???
+	_, err := conn.Down.Read(b) // the struct/(pointer to struct) rule cann't be applied recursively ???
 	err = ERR_SOCKS5_NO_AVAIL_AUTH
 	for _, v := range b {
 		if 0x00 == v {
@@ -49,37 +49,37 @@ func (s S5LH) Authenticate(conn * ConnPair) error {
 			break
 		}
 	}
-	_, err = (*(conn.Down)).Write(s.AuthRep[:])
+	_, err = conn.Down.Write(s.AuthRep[:])
 	return err
 }
 
 func (s S5LH) GetRequestType(conn *ConnPair) (cmd byte, addr net.IP, port uint16, err error) {
 	b1 := make([]byte, 4)
-	n, err := conn.Down.Read(b1)
+	_, err = conn.Down.Read(b1)
 	cmd = b1[1]
 	atype := b1[3]
 	switch atype {
 		case 0x01:
 			addr = make([]byte, 4)
-			n, err = conn.Down.Read(addr)
+			_, err = conn.Down.Read(addr)
 		case 0x03:
 			b2 := make([]byte, 1)
-			n, err = conn.Down.Read(b2)
+			_, err = conn.Down.Read(b2)
 			l := b2[0]
 			b3 := make([]byte, l)
-			n, err = conn.Down.Read(b2)
+			_, err = conn.Down.Read(b2)
 			host := string(b3[:])
 			var ips []net.IP
 			ips, err = net.LookupIP(host)
 			addr = ips[0]
 		case 0x04:
 			addr = make([]byte, 16)
-			n, err = conn.Down.Read(addr)
+			_, err = conn.Down.Read(addr)
 		default:
 			return
 	}
 	b4 := make([]byte, 2)
-	n, err = conn.Down.Read(b4)
+	_, err = conn.Down.Read(b4)
 	port = (uint16(b4[0]) << 8) | uint16(b4[1])
 	return
 }
@@ -93,48 +93,38 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 	if nil != err {
 		return
 	}
-	var rep byte
 	switch cmd {
 		case SOCKS5_CONNECT:
-			bndAddr, bndPort, err := (*UH).Connect(&addr, port, conn)
+			bndAddr, bndPort, err := s.Connect(&addr, port, conn)
 			if nil != err {
-				rep = 1
+				return err
 			}
-			addrLen := len(*bndAddr)
+			addrLen := len(bndAddr)
 			repPacket := make([]byte, addrLen + 6)
-			repPacket[0:4] = {0x05, 0x00, 0x00, byte(addrLen)}
-			repPacket[4:4+addrLen] = *bndAddr
-			repPacket[4+addrLen:] = {byte(bndPort >> 8), byte(bndPort & 0xff)}
-			n, err = (*(conn.Down)).Write(repPacket)
-			go s.SocketHalf.Relay(conn)
+			copy(repPacket[0:4], []byte{0x05, 0x00, 0x00, byte(addrLen)})
+			copy(repPacket[4:4+addrLen], bndAddr)
+			copy(repPacket[4+addrLen:], []byte{byte(bndPort >> 8), byte(bndPort & 0xff)})
+			_, err = conn.Down.Write(repPacket)
+			go s.SocksHalf.Relay(conn)
 			err = s.Relay(conn)
 		case SOCKS_BIND:
 			var bindAddr *net.TCPAddr
-			bindListener, err = (*UH).BindListen(bindAddr, conn)
-			err = UH.BindAccept(bind, conn)
-			err = conn.Reply()
-			go s.SocketHalf.Relay(conn)
-			err = s.Relay(conn)
-		case SOCKS5_UDP:
-/* TO BE IMPLEMENTED
-			repErr := s.Reply(conn, rep)
-			if nil != repErr {
-				// close connection
-				return repErr
-			}
-			err = conn.RelayUDP(udpConn)
-*/
+			bindListener, _ := s.BindListen(bindAddr, conn)
+			s.BindAccept(bindListener, conn)
+			// reply
+			go s.SocksHalf.Relay(conn)
+			s.Relay(conn)
+		case SOCKS_UDP_ASSOCIATE:
 	}
-	conn.Close()
 	return
 }
 
 func (s S5LH) Listen(addr *net.TCPAddr) error {
-	listener := net.ListenTCP("tcp", addr)
-	listener.SetDeadline(s.Deadtime)
+	listener, _ := net.ListenTCP("tcp", addr)
+	listener.SetDeadline(time.Now().Add(s.Deadtime))
 	for s.IsRunning {
-		conn, err := listener.AcceptTCP()
-		go s.Deal(&ConnPair{Down:conn, Up:nil, Chan:make(Chan *Packet, 10)})
+		conn, _ := listener.AcceptTCP()
+		go s.Deal(&ConnPair{Down:conn, Up:nil, Chan:make(chan *Packet, 20)})
 	}
 	return nil
 }
@@ -154,14 +144,15 @@ func (s S5LH) BindAccept(listener *net.TCPListener, conn *ConnPair) (*net.TCPCon
 */
 
 func (s S5LH) Relay(conn *ConnPair) error {
-	conn.Down.SetDeadline(s.Deadtime)
+	conn.Down.SetDeadline(time.Now().Add(s.Deadtime))
 	for {
-		b = make([]byte, s.PacketMaxLength)
-		n, err := conn.Down.Read(b)
+		b := make([]byte, s.PacketMaxLength)
+		_, err := conn.Down.Read(b)
 		if nil != err {
 			return err
 		}
-		con.Chan <- &b
+		p := Packet(b)
+		conn.Chan <- &p
 	}
 }
 
@@ -182,7 +173,7 @@ func (s S5UH) Listen(addr *net.TCPAddr) error {
 }
 */
 func (s S5LH) SetDeadline(t time.Duration) error {
-	s.Deadline = t
+	s.Deadtime = t
 	return nil
 }
 
@@ -190,8 +181,8 @@ func (s S5UH) Init() {
 	return
 }
 
-func (s S5UH) Connect(addr *net.IP, port uint16, conn *ConnPair) (bndAddr *net.IP, bndPort uint16, err error) {
-	dialer := Dialer{Timeout:s.Deadtime, DualStack:false}
+func (s S5UH) Connect(addr *net.IP, port uint16, conn *ConnPair) (bndAddr net.IP, bndPort uint16, err error) {
+	dialer := net.Dialer{Timeout:s.Deadtime, DualStack:false}
 	address := addr.String() + ":" + string(port)
 	network := "tcp"
 	var newConn net.Conn
@@ -200,33 +191,33 @@ func (s S5UH) Connect(addr *net.IP, port uint16, conn *ConnPair) (bndAddr *net.I
 		return
 	}
 	localAddr := newConn.LocalAddr().String()
-	var tcpAddr *TCPAddr
+	var tcpAddr *net.TCPAddr
 	tcpAddr, err = net.ResolveTCPAddr(network, localAddr)
-	bndAddr = &tcpAddr.IP
-	bndPort = &tcpAddr.Port
+	bndAddr = tcpAddr.IP
+	bndPort = uint16(tcpAddr.Port)
 	conn.Up = newConn
 	return
 }
 
-func (S5UH) BindListen(addr *net.TCPAddr, conn *ConnPair) (*net.TCPListener, error) {
-	listener, err := net.ListenTCP("tcp", laddr *TCPAddr)
+func (S5UH) BindListen(lAddr *net.TCPAddr, conn *ConnPair) (*net.TCPListener, error) {
+	listener, err := net.ListenTCP("tcp", lAddr)
 	return listener, err
 }
 
-func (s S5UH) BindAccept(conn *ConnPair, listener *net.TCPListener) error {
-	err := listener.SetDeadline(s.Deadtime)
+func (s S5UH) BindAccept(listener *net.TCPListener, conn *ConnPair) error {
+	err := listener.SetDeadline(time.Now().Add(s.Deadtime))
 	newConn, err := listener.Accept()
 	conn.Up = newConn
-	return newConn, err
+	return err
 }
 
 func (s S5UH) Relay(conn *ConnPair) error {
 	for {
-		b := <- conn.Chann
+		b := <- conn.Chan
 		if nil == b {
 			break
 		}
-		err := conn.Up.Write(*b)
+		_, err := conn.Up.Write(*b)
 		if nil != err {
 			return err
 		}
@@ -235,6 +226,6 @@ func (s S5UH) Relay(conn *ConnPair) error {
 }
 
 func (s S5UH) SetDeadline(t time.Duration) error {
-	s.Deadline = t
+	s.Deadtime = t
 	return nil
 }

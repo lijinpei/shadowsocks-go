@@ -2,7 +2,6 @@ package shadowsocks
 
 import (
 	"net"
-	"time"
 )
 
 // Packet represents a TCP/UDP packet
@@ -12,7 +11,7 @@ type Packet []byte
 type ConnPair struct {
 	Up net.Conn
 	Down net.Conn
-	Chan *(chan Packet)
+	Chan chan *Packet
 }
 
 // SocksHalf represents half of relay server
@@ -23,9 +22,9 @@ type SocksHalf interface {
 	Listen(*net.TCPAddr) error
 	// Methods specifig to upper half
 	// Lower half should call corresponding upper half's methods
-	Connect(*net.IP, uint16, *ConnPair) (*net.IP, uint16, error)
+	Connect(*net.IP, uint16, *ConnPair) (net.IP, uint16, error)
 	// addr: address to listen for bind as expected by client
-	BindListen(addr *net.TCPAddr, *ConnPair) (*net.TCPListener, error)
+	BindListen(addr *net.TCPAddr, conn *ConnPair) (*net.TCPListener, error)
 	BindAccept(*net.TCPListener, *ConnPair) (error)
 	// Methods shared by both half
 	Relay(*ConnPair) error
