@@ -59,7 +59,7 @@ func (log *logging) Write(level int, mes string, skip int) {
 	log.MutexWrite(log.LogFile, mes, log.FileMutex)
 }
 
-func (log *logging) Info(mes string) {
+func (log *logging) Debug(mes string) {
 	log.Write(INFO, mes, 2)
 }
 

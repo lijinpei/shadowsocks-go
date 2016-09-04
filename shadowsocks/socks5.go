@@ -36,7 +36,7 @@ type Socks5 struct {
 
 func (s Socks5) Relay(conn *ConnPair) error {
 	if DbgCtlFlow {
-		Log.Info("Relay started")
+		Log.Debug("Relay started")
 	}
 	var mpl = s.S5LH.MaxPacketLength
 	if mpl > s.S5UH.MaxPacketLength {
@@ -47,7 +47,7 @@ func (s Socks5) Relay(conn *ConnPair) error {
 	// Upward
 	go func () {
 		if DbgCtlFlow {
-			Log.Info("Upward started")
+			Log.Debug("Upward started")
 		}
 		b := make([]byte, mpl)
 		for {
@@ -56,13 +56,13 @@ func (s Socks5) Relay(conn *ConnPair) error {
 			n1, e1 = s.ReadLH(b, conn)
 			if 0 != n1 {
 				if DbgLogPacket {
-					Log.Info(fmt.Sprintf("Upward packet %v length %v", b, n1))
+					Log.Debug(fmt.Sprintf("Upward packet %v length %v", b, n1))
 				}
 				_, e2 = s.WriteUH(b[:n1], conn)
 			}
 			if nil != e1 {
 				if DbgCtlFlow {
-					Log.Info("Upward read " + e1.Error())
+					Log.Debug("Upward read " + e1.Error())
 				}
 				eU = e1
 				c <- true
@@ -70,7 +70,7 @@ func (s Socks5) Relay(conn *ConnPair) error {
 			}
 			if 0 == n1 {
 				if DbgCtlFlow {
-					Log.Info("Upward client socket closed")
+					Log.Debug("Upward client socket closed")
 				}
 				eU = nil
 				c <- true
@@ -78,7 +78,7 @@ func (s Socks5) Relay(conn *ConnPair) error {
 			}
 			if nil != e2 {
 				if DbgCtlFlow {
-					Log.Info("Upward write " + e2.Error())
+					Log.Debug("Upward write " + e2.Error())
 				}
 				eU = e2
 				c <- true
@@ -89,7 +89,7 @@ func (s Socks5) Relay(conn *ConnPair) error {
 	// Downward
 	func () {
 		if DbgCtlFlow {
-			Log.Info("Downward started")
+			Log.Debug("Downward started")
 		}
 		b := make([]byte, mpl)
 		var n1 int
@@ -98,27 +98,27 @@ func (s Socks5) Relay(conn *ConnPair) error {
 			n1, e1 = s.ReadUH(b, conn)
 			if 0 != n1 {
 				if DbgLogPacket {
-					Log.Info(fmt.Sprintf("Downward packet %v length %v", b, n1))
+					Log.Debug(fmt.Sprintf("Downward packet %v length %v", b, n1))
 				}
 				_, e2 = s.WriteLH(b[:n1], conn)
 			}
 			if nil != e1 {
 				if DbgCtlFlow {
-					Log.Info("Downward read " + e1.Error())
+					Log.Debug("Downward read " + e1.Error())
 				}
 				eD = e1
 				return
 			}
 			if 0 == n1 {
 				if DbgCtlFlow {
-					Log.Info("Downward remote socket closed")
+					Log.Debug("Downward remote socket closed")
 				}
 				eD = nil
 				return
 			}
 			if nil != e2 {
 				if DbgCtlFlow {
-					Log.Info("Downward write " + e2.Error())
+					Log.Debug("Downward write " + e2.Error())
 				}
 				eD = e2
 				return
@@ -130,7 +130,7 @@ func (s Socks5) Relay(conn *ConnPair) error {
 	conn.Down.Close()
 	conn.Up.Close()
 	if DbgCtlFlow {
-		Log.Info("Relay finished")
+		Log.Debug("Relay finished")
 	}
 	if nil != eU {
 		return eU
@@ -160,7 +160,7 @@ func (s *S5LH) Init() {
 
 func (s S5LH) Authenticate(conn * ConnPair) error {
 	if DbgCtlFlow {
-		Log.Info("Authenticate started")
+		Log.Debug("Authenticate started")
 	}
 	b := make([]byte, 2 + 255)
 	_, err := conn.Down.Read(b[0:2])
@@ -175,20 +175,20 @@ func (s S5LH) Authenticate(conn * ConnPair) error {
 	}
 	_, err = conn.Down.Write(s.AuthRep[0:2])
 	if DbgCtlFlow {
-		Log.Info("AUthenticate finished")
+		Log.Debug("AUthenticate finished")
 		var errString string
 		if nil != err {
 			errString = err.Error()
 		}
-		Log.Info(fmt.Sprintf("Auth Replay length %v packet", len(s.AuthRep), s.AuthRep[0:2]))
-		Log.Info("Authentication results " + errString)
+		Log.Debug(fmt.Sprintf("Auth Replay length %v packet", len(s.AuthRep), s.AuthRep[0:2]))
+		Log.Debug("Authentication results " + errString)
 	}
 	return err
 }
 
 func (s S5LH) GetRequestType(conn *ConnPair) (cmd, atype byte, addr net.IP, port uint16, err error) {
 	if DbgCtlFlow {
-		Log.Info("GetRequestType started")
+		Log.Debug("GetRequestType started")
 	}
 	b1 := make([]byte, 4)
 	var n int
@@ -196,10 +196,10 @@ func (s S5LH) GetRequestType(conn *ConnPair) (cmd, atype byte, addr net.IP, port
 	cmd = b1[1]
 	atype = b1[3]
 	if DbgCtlFlow {
-		Log.Info("GetRequestType info")
-		Log.Info("b1 bytes read " + strconv.Itoa(n))
-		Log.Info("cmd " + strconv.Itoa(int(cmd)))
-		Log.Info("atype " + strconv.Itoa(int(atype)))
+		Log.Debug("GetRequestType info")
+		Log.Debug("b1 bytes read " + strconv.Itoa(n))
+		Log.Debug("cmd " + strconv.Itoa(int(cmd)))
+		Log.Debug("atype " + strconv.Itoa(int(atype)))
 	}
 	switch atype {
 		case 0x01:
@@ -210,20 +210,20 @@ func (s S5LH) GetRequestType(conn *ConnPair) (cmd, atype byte, addr net.IP, port
 			_, err = conn.Down.Read(b2)
 			l := b2[0]
 			if Debug {
-				Log.Info("Domain name length " + strconv.Itoa(int(l)))
+				Log.Debug("Domain name length " + strconv.Itoa(int(l)))
 			}
 			addr = make([]byte, l)
 			n, err = conn.Down.Read(addr)
 			if Debug {
-				Log.Info("Domain name length read " + strconv.Itoa(int(n)))
+				Log.Debug("Domain name length read " + strconv.Itoa(int(n)))
 			}
 		case 0x04:
 			addr = make([]byte, 16)
 			_, err = conn.Down.Read(addr)
 		default:
 			if DbgCtlFlow {
-				Log.Info("GetRequest finished")
-				Log.Info("GetRequest wrong atype")
+				Log.Debug("GetRequest finished")
+				Log.Debug("GetRequest wrong atype")
 				}
 			err = Error("GetRequest wrong atype")
 			return
@@ -232,7 +232,7 @@ func (s S5LH) GetRequestType(conn *ConnPair) (cmd, atype byte, addr net.IP, port
 	_, err = conn.Down.Read(b4)
 	port = (uint16(b4[0]) << 8) | uint16(b4[1])
 	if DbgCtlFlow {
-		Log.Info("Getrequest finished")
+		Log.Debug("Getrequest finished")
 		var errStr string
 		if nil != err {
 			errStr = err.Error()
@@ -243,14 +243,14 @@ func (s S5LH) GetRequestType(conn *ConnPair) (cmd, atype byte, addr net.IP, port
 		} else {
 			addrStr = string(addr)
 		}
-		Log.Info(fmt.Sprintf("GetRequest results cmd %v atype %v addr %v port %v err %v", cmd, atype, addrStr, port, errStr))
+		Log.Debug(fmt.Sprintf("GetRequest results cmd %v atype %v addr %v port %v err %v", cmd, atype, addrStr, port, errStr))
 	}
 	return
 }
 
 func (s S5LH) ReadLH(b []byte, conn *ConnPair) (n int, err error) {
 	if DbgLogPacket {
-		Log.Info(fmt.Sprintf("ReadLH S5LH %v packet %v", conn.Down.RemoteAddr(), b))
+		Log.Debug(fmt.Sprintf("ReadLH S5LH %v packet %v", conn.Down.RemoteAddr(), b))
 	}
 	conn.Down.SetReadDeadline(time.Now().Add(s.Deadtime))
 	n, err = conn.Down.Read(b)
@@ -259,7 +259,7 @@ func (s S5LH) ReadLH(b []byte, conn *ConnPair) (n int, err error) {
 
 func (s S5LH) WriteLH(b []byte, conn *ConnPair) (n int, err error) {
 	if DbgLogPacket {
-		Log.Info(fmt.Sprintf("WriteLH S5LH %v packet %v", conn.Down.RemoteAddr(), b))
+		Log.Debug(fmt.Sprintf("WriteLH S5LH %v packet %v", conn.Down.RemoteAddr(), b))
 	}
 	conn.Down.SetWriteDeadline(time.Now().Add(s.Deadtime))
 	n, err = conn.Down.Write(b)
@@ -268,7 +268,7 @@ func (s S5LH) WriteLH(b []byte, conn *ConnPair) (n int, err error) {
 
 func (s S5LH) Deal(conn *ConnPair) (err error) {
 	if DbgCtlFlow {
-		Log.Info("Deal started")
+		Log.Debug("Deal started")
 	}
 	err = s.Authenticate(conn)
 	if nil != err {
@@ -276,7 +276,7 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 	}
 	cmd, atype, addr, port, err := s.GetRequestType(conn)
 	if DbgCtlFlow {
-		Log.Info(fmt.Sprintf("GetRequestType results: cmd %v atype %v addr %v", cmd, atype, addr))
+		Log.Debug(fmt.Sprintf("GetRequestType results: cmd %v atype %v addr %v", cmd, atype, addr))
 	}
 	if nil != err {
 		return
@@ -296,7 +296,7 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 			atype = 0x01
 		}
 		if DbgCtlFlow {
-			Log.Info(fmt.Sprintf("Deal DNS lookup results: atype %v addr %v", atype, addr))
+			Log.Debug(fmt.Sprintf("Deal DNS lookup results: atype %v addr %v", atype, addr))
 		}
 	}
 	if (0x01 != atype) && (0x04 != atype) {
@@ -305,7 +305,7 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 	switch cmd {
 		case SOCKS5_CONNECT:
 			if DbgCtlFlow {
-				Log.Info("Deal connect")
+				Log.Debug("Deal connect")
 			}
 			var bndAddr net.IP
 			var bndPort uint16
@@ -324,7 +324,7 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 			}
 			if nil != err {
 				if DbgCtlFlow {
-					Log.Info("Deal connect error " + err.Error())
+					Log.Debug("Deal connect error " + err.Error())
 				}
 				return err
 			}
@@ -333,40 +333,40 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 			copy(repPacket[4:4+l], bndAddr[l1:l2])
 			copy(repPacket[4+l:], []byte{byte(bndPort >> 8), byte(bndPort & 0xff)})
 			if DbgLogPacket {
-				Log.Info(fmt.Sprintf("Replay packet length %v packet %v", len(repPacket), repPacket))
+				Log.Debug(fmt.Sprintf("Replay packet length %v packet %v", len(repPacket), repPacket))
 			}
 			_, err = conn.Down.Write(repPacket)
 			err = s.S.Relay(conn)
 		case SOCKS_BIND:
 			if DbgCtlFlow {
-				Log.Info("Deal bind")
+				Log.Debug("Deal bind")
 			}
 			var bindAddr *net.TCPAddr
 			bindListener, _ := s.S.BindListen(bindAddr, conn)
 			s.S.BindAccept(bindListener, conn)
 			// reply
 		case SOCKS_UDP_ASSOCIATE:
-			if DbgCtlFlow {
-				Log.Info("Deal udp associate")
+			if DbgCtlFlow || DbgUDP {
+				Log.Debug("Deal udp associate")
 			}
 	}
 	if DbgCtlFlow {
-		Log.Info("Deal finished")
+		Log.Debug("Deal finished")
 	}
 	return
 }
 
 func (s S5LH) Listen(addr *net.TCPAddr) error {
 	if DbgCtlFlow {
-		Log.Info("Listen started")
-		Log.Info(fmt.Sprintf("%v", s.IsRunning))
+		Log.Debug("Listen started")
+		Log.Debug(fmt.Sprintf("%v", s.IsRunning))
 	}
 	listener, _ := net.ListenTCP("tcp", addr)
 	//listener.SetDeadline(time.Now().Add(s.Deadtime))
 	for s.IsRunning {
 		conn, _ := listener.AcceptTCP()
 		if DbgCtlFlow {
-			Log.Info("Accept connection")
+			Log.Debug("Accept connection")
 		}
 		go s.Deal(&ConnPair{Down:conn, Up:nil, UpChan:make(chan *[]byte, 20), DownChan:make(chan *[]byte, 20)})
 	}
@@ -393,7 +393,7 @@ func (s *S5UH) Init() {
 
 func (s S5UH) Connect(atype byte, addr net.IP, port uint16, conn *ConnPair) (bndAddr net.IP, bndPort uint16, err error) {
 	if DbgCtlFlow {
-		Log.Info("Connect started")
+		Log.Debug("Connect started")
 	}
 	// TODO: ipv4-mapped ipv6 address
 	var addrStr string
@@ -403,14 +403,14 @@ func (s S5UH) Connect(atype byte, addr net.IP, port uint16, conn *ConnPair) (bnd
 		addrStr = "[" + net.IP(addr).String() + "]:" + strconv.Itoa(int(port))
 	}
 	if DbgCtlFlow {
-		Log.Info("Connect address " + addrStr)
+		Log.Debug("Connect address " + addrStr)
 	}
 	network := "tcp"
 	var newConn net.Conn
 	newConn, err = net.DialTimeout(network, addrStr, s.Deadtime)
 	if nil != err {
 		if DbgCtlFlow {
-			Log.Info("Connect error " + err.Error())
+			Log.Debug("Connect error " + err.Error())
 		}
 		return
 	}
@@ -421,15 +421,15 @@ func (s S5UH) Connect(atype byte, addr net.IP, port uint16, conn *ConnPair) (bnd
 	bndPort = uint16(tcpAddr.Port)
 	conn.Up = newConn
 	if DbgCtlFlow {
-		Log.Info("Connect finished")
-		Log.Info(fmt.Sprintf("Connect local results: addr %v port %v err %v", bndAddr, bndPort, err))
+		Log.Debug("Connect finished")
+		Log.Debug(fmt.Sprintf("Connect local results: addr %v port %v err %v", bndAddr, bndPort, err))
 	}
 	return
 }
 
 func (s S5UH) ReadUH(b []byte, conn *ConnPair) (n int, err error) {
 	if DbgLogPacket {
-		Log.Info(fmt.Sprintf("ReadUH S5LH %v packet %v", conn.Up.RemoteAddr(), b))
+		Log.Debug(fmt.Sprintf("ReadUH S5LH %v packet %v", conn.Up.RemoteAddr(), b))
 	}
 	conn.Up.SetReadDeadline(time.Now().Add(s.Deadtime))
 	n, err = conn.Up.Read(b)
@@ -438,7 +438,7 @@ func (s S5UH) ReadUH(b []byte, conn *ConnPair) (n int, err error) {
 
 func (s S5UH) WriteUH(b []byte, conn *ConnPair) (n int, err error) {
 	if DbgLogPacket {
-		Log.Info(fmt.Sprintf("WriteUH S5LH %v packet %v", conn.Up.RemoteAddr(), b))
+		Log.Debug(fmt.Sprintf("WriteUH S5LH %v packet %v", conn.Up.RemoteAddr(), b))
 	}
 	conn.Up.SetWriteDeadline(time.Now().Add(s.Deadtime))
 	n, err = conn.Up.Write(b)
@@ -447,7 +447,7 @@ func (s S5UH) WriteUH(b []byte, conn *ConnPair) (n int, err error) {
 
 func (S5UH) BindListen(lAddr *net.TCPAddr, conn *ConnPair) (*net.TCPListener, error) {
 	if DbgCtlFlow {
-		Log.Info("BindListen started")
+		Log.Debug("BindListen started")
 	}
 	listener, err := net.ListenTCP("tcp", lAddr)
 	return listener, err
@@ -455,7 +455,7 @@ func (S5UH) BindListen(lAddr *net.TCPAddr, conn *ConnPair) (*net.TCPListener, er
 
 func (s S5UH) BindAccept(listener *net.TCPListener, conn *ConnPair) error {
 	if DbgCtlFlow {
-		Log.Info("BindAccept started")
+		Log.Debug("BindAccept started")
 	}
 	err := listener.SetDeadline(time.Now().Add(s.Deadtime))
 	newConn, err := listener.Accept()
