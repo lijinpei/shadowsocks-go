@@ -15,6 +15,8 @@ func main() {
     var S ss.Socks5
     UH.S = S
     LH.S = S
+    S.S5UH = UH
+    S.S5LH = LH
     TCPAddr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:1081")
     if nil != err {
         fmt.Println("Error get TCP Address")

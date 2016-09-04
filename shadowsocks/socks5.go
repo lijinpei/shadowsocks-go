@@ -262,6 +262,7 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 func (s S5LH) Listen(addr *net.TCPAddr) error {
 	if Debug {
 		Log.Info("Listen started")
+		Log.Info(fmt.Sprintf("%v", s.IsRunning))
 	}
 	listener, _ := net.ListenTCP("tcp", addr)
 	//listener.SetDeadline(time.Now().Add(s.Deadtime))
