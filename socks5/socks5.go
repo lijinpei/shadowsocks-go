@@ -12,12 +12,13 @@ func main() {
     var LH ss.S5LH
 	ss.Log.Init("/tmp/ss.debug.log", ss.INFO)
     LH.Init()
-    UH.SocksLH = LH
-    LH.SocksUH = UH
+    var S ss.Socks5
+    UH.Socks = S
+    LH.Socks = S
     TCPAddr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:1081")
     if nil != err {
         fmt.Println("Error get TCP Address")
     }
-    LH.Listen(TCPAddr)
+    S.Listen(TCPAddr)
 	ss.Log.Finish()
 }

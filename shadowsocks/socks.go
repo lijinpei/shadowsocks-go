@@ -29,14 +29,17 @@ type Socks interface {
 //	UDPRelay(, *UDPConn) error
 }
 
+// Make Sure those two inferface have no methods with the same name
 type SocksLH interface {
 	Listen(*net.TCPAddr) error
-	//RelayLH(*ConnPair) error
+	ReadLH([]byte, *ConnPair) (int, error)
+	WriteLH([]byte, conn *ConnPair) (int, error)
 }
 
 type SocksUH interface {
 	Connect(*net.IP, uint16, *ConnPair) (net.IP, uint16, error)
 	BindListen(addr *net.TCPAddr, conn *ConnPair) (*net.TCPListener, error)
 	BindAccept(*net.TCPListener, *ConnPair) (error)
-	//RelayUH(*ConnPair) error
+	ReadUH(conn *ConnPair) (int, error)
+	WriteUH([]byte, conn *ConnPair) (int, error)
 }
