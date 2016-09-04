@@ -40,6 +40,9 @@ type Socks5 struct {
 }
 
 func (s Socks5) Relay(conn *ConnPair) error {
+	if Debug {
+		Log.Info("Relay started")
+	}
 	var mpl = s.S5LH.MaxPacketLength
 	if mpl > s.S5UH.MaxPacketLength {
 		mpl = s.S5UH.MaxPacketLength
@@ -48,31 +51,56 @@ func (s Socks5) Relay(conn *ConnPair) error {
 	var c chan bool
 	// Upward
 	go func () {
+		if Debug {
+			Log.Info("Upward started")
+		}
 		b := make([]byte, mpl)
 		for {
 			var n1 int
 			n1, e1 = s.ReadLH(b, conn)
 			if nil != e1{
+				if Debug {
+					Log.Info("Upward read " + e1.Error())
+				}
+				c <- true
 				return
+			}
+			if Debug {
+				Log.Info(fmt.Sprintf("Upward packet %v length %v", b, n1))
 			}
 			_, e1 = s.WriteUH(b[:n1], conn)
 			if nil != e1 {
+				if Debug {
+					Log.Info("Upward write " + e1.Error())
+				}
+				c <- true
 				return
 			}
 		}
-		c <- true
 	} ()
 	// Downward
 	func () {
+		if Debug {
+			Log.Info("Downward started")
+		}
 		b := make([]byte, mpl)
 		var n1 int
 		for {
 			n1, e2 = s.ReadUH(b, conn)
 			if nil != e2 {
+				if Debug {
+					Log.Info("Downward read " + e2.Error())
+				}
 				return
+			}
+			if Debug {
+				Log.Info(fmt.Sprintf("Downward packet %v length %v", b, n1))
 			}
 			_, e2 = s.WriteLH(b[:n1], conn)
 			if nil != e2 {
+				if Debug {
+					Log.Info("Downward write " + e2.Error())
+				}
 				return
 			}
 		}
@@ -81,6 +109,9 @@ func (s Socks5) Relay(conn *ConnPair) error {
 	// Clear up
 	conn.Down.Close()
 	conn.Up.Close()
+	if Debug {
+		Log.Info("Relay finished")
+	}
 	if nil != e1 {
 		return e1
 	}
@@ -103,7 +134,7 @@ type S5LH struct{
 func (s *S5LH) Init() {
 	s.MaxPacketLength =256
 	s.IsRunning = true
-	s.Deadtime, _ = time.ParseDuration("1s")
+	s.Deadtime, _ = time.ParseDuration("20s")
 	s.AuthRep = [2]byte{0x05, 0x00}
 }
 
@@ -122,13 +153,14 @@ func (s S5LH) Authenticate(conn * ConnPair) error {
 			break
 		}
 	}
-	_, err = conn.Down.Write(s.AuthRep[:])
+	_, err = conn.Down.Write(s.AuthRep[0:2])
 	if Debug {
 		Log.Info("AUthenticate finished")
 		var errString string
 		if nil != err {
 			errString = err.Error()
 		}
+		Log.Info(fmt.Sprintf("Auth Replay length %v packet", len(s.AuthRep), s.AuthRep[0:2]))
 		Log.Info("Authentication results " + errString)
 	}
 	return err
@@ -229,15 +261,33 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 			}
 			var bndAddr net.IP
 			var bndPort uint16
+			var atype byte
 			bndAddr, bndPort, err = s.S.Connect(&addr, port, conn)
+			var l2 = len(bndAddr)
+			var l1 = l2
+			var l = l2
+			if nil != bndAddr.To4() {
+				atype = 0x01
+				l1 = l2 - 4
+				l = 4
+			} else {
+				atype = 0x04
+				l1 = l2 - 16
+				l = 16
+			}
 			if nil != err {
+				if Debug {
+					Log.Info("Deal connect error " + err.Error())
+				}
 				return err
 			}
-			addrLen := len(bndAddr)
-			repPacket := make([]byte, addrLen + 6)
-			copy(repPacket[0:4], []byte{0x05, 0x00, 0x00, byte(addrLen)})
-			copy(repPacket[4:4+addrLen], bndAddr)
-			copy(repPacket[4+addrLen:], []byte{byte(bndPort >> 8), byte(bndPort & 0xff)})
+			repPacket := make([]byte, l + 7)
+			copy(repPacket[0:5], []byte{0x05, 0x00, 0x00, atype, byte(l)})
+			copy(repPacket[5:5+l], bndAddr[l1:l2])
+			copy(repPacket[5+l:], []byte{byte(bndPort >> 8), byte(bndPort & 0xff)})
+			if Debug {
+				Log.Info(fmt.Sprintf("Replay packet length %v packet %v", len(repPacket), repPacket))
+			}
 			_, err = conn.Down.Write(repPacket)
 			err = s.S.Relay(conn)
 		case SOCKS_BIND:
@@ -276,6 +326,11 @@ func (s S5LH) Listen(addr *net.TCPAddr) error {
 	return nil
 }
 
+func (s *S5LH) SetDeadline(t time.Duration) error {
+	s.Deadtime = t
+	return nil
+}
+
 type S5UH struct {
 	S Socks
 	Deadtime time.Duration
@@ -283,15 +338,10 @@ type S5UH struct {
 	MaxPacketLength uint
 }
 
-func (s S5LH) SetDeadline(t time.Duration) error {
-	s.Deadtime = t
-	return nil
-}
-
 func (s *S5UH) Init() {
 	s.MaxPacketLength =256
 	s.IsRunning = true
-	s.Deadtime, _ = time.ParseDuration("1s")
+	s.Deadtime, _ = time.ParseDuration("20s")
 }
 
 func (s S5UH) Connect(addr *net.IP, port uint16, conn *ConnPair) (bndAddr net.IP, bndPort uint16, err error) {
@@ -320,6 +370,7 @@ func (s S5UH) Connect(addr *net.IP, port uint16, conn *ConnPair) (bndAddr net.IP
 	conn.Up = newConn
 	if Debug {
 		Log.Info("Connect finished")
+		Log.Info(fmt.Sprintf("Connect local results: addr %v port %v err %v", bndAddr, bndPort, err))
 	}
 	return
 }
