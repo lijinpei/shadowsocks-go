@@ -20,7 +20,7 @@ type Socks interface {
 	Listen(*net.TCPAddr) error
 	// Methods specifig to upper half
 	// Lower half should call corresponding upper half's methods
-	Connect(*net.IP, uint16, *ConnPair) (net.IP, uint16, error)
+	Connect(byte, net.IP, uint16, *ConnPair) (net.IP, uint16, error)
 	// addr: address to listen for bind as expected by client
 	BindListen(addr *net.TCPAddr, conn *ConnPair) (*net.TCPListener, error)
 	BindAccept(*net.TCPListener, *ConnPair) (error)
