@@ -1,13 +1,13 @@
 package shadowsocks
 
 import (
-	"io"
+//	"io"
 	"net"
 	"time"
 	"strconv"
 	"errors"
 	"fmt"
-	"encoding/hex"
+//	"encoding/hex"
 )
 
 func dummyFmt () {
@@ -41,22 +41,22 @@ type Socks5 struct {
 
 func (s Socks5) Relay(conn *ConnPair) error {
 	var mpl = s.S5LH.MaxPacketLength
-	if mpl > s.S5UH.MacPacketLength {
-		mpl = s.S5UH.MacPacketLength
+	if mpl > s.S5UH.MaxPacketLength {
+		mpl = s.S5UH.MaxPacketLength
 	}
 	var e1, e2 error
 	var c chan bool
 	// Upward
 	go func () {
 		b := make([]byte, mpl)
-		var n1, n2 int
 		for {
+			var n1 int
 			n1, e1 = s.ReadLH(b, conn)
 			if nil != e1{
 				return
 			}
-			n2, err = s.WriteUH(b[:n1], conn)
-			if nil != err {
+			_, e1 = s.WriteUH(b[:n1], conn)
+			if nil != e1 {
 				return
 			}
 		}
@@ -65,14 +65,14 @@ func (s Socks5) Relay(conn *ConnPair) error {
 	// Downward
 	func () {
 		b := make([]byte, mpl)
-		var n1, n2 int
+		var n1 int
 		for {
 			n1, e2 = s.ReadUH(b, conn)
 			if nil != e2 {
 				return
 			}
-			n2, e2 = s.WriteLH(b[:n1], conn)
-			if nil != err{
+			_, e2 = s.WriteLH(b[:n1], conn)
+			if nil != e2 {
 				return
 			}
 		}
@@ -96,12 +96,12 @@ type S5LH struct{
 	S Socks
 	Deadtime time.Duration
 	IsRunning bool
-	PacketMaxLength uint
+	MaxPacketLength uint
 	AuthRep [2]byte
 }
 
 func (s *S5LH) Init() {
-	s.PacketMaxLength =256
+	s.MaxPacketLength =256
 	s.IsRunning = true
 	s.Deadtime, _ = time.ParseDuration("1s")
 	s.AuthRep = [2]byte{0x05, 0x00}
@@ -197,13 +197,13 @@ func (s S5LH) GetRequestType(conn *ConnPair) (cmd byte, addr net.IP, port uint16
 	return
 }
 
-func (s S5LH) ReadLH(b []byte, conn *net.Conn) (n int, err error) {
+func (s S5LH) ReadLH(b []byte, conn *ConnPair) (n int, err error) {
 	conn.Down.SetReadDeadline(time.Now().Add(s.Deadtime))
 	n, err = conn.Down.Read(b)
 	return
 }
 
-func (s S5LH) WriteLH(b []byte, conn *net.Conn) (n int, err error) {
+func (s S5LH) WriteLH(b []byte, conn *ConnPair) (n int, err error) {
 	conn.Down.SetWriteDeadline(time.Now().Add(s.Deadtime))
 	n, err = conn.Down.Write(b)
 	return
@@ -279,7 +279,7 @@ type S5UH struct {
 	S Socks
 	Deadtime time.Duration
 	IsRunning bool
-	MaxPacketLength int
+	MaxPacketLength uint
 }
 
 func (s S5LH) SetDeadline(t time.Duration) error {
@@ -287,8 +287,10 @@ func (s S5LH) SetDeadline(t time.Duration) error {
 	return nil
 }
 
-func (s S5UH) Init() {
-	return
+func (s *S5UH) Init() {
+	s.MaxPacketLength =256
+	s.IsRunning = true
+	s.Deadtime, _ = time.ParseDuration("1s")
 }
 
 func (s S5UH) Connect(addr *net.IP, port uint16, conn *ConnPair) (bndAddr net.IP, bndPort uint16, err error) {

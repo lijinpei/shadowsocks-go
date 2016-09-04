@@ -33,13 +33,13 @@ type Socks interface {
 type SocksLH interface {
 	Listen(*net.TCPAddr) error
 	ReadLH([]byte, *ConnPair) (int, error)
-	WriteLH([]byte, conn *ConnPair) (int, error)
+	WriteLH([]byte, *ConnPair) (int, error)
 }
 
 type SocksUH interface {
 	Connect(*net.IP, uint16, *ConnPair) (net.IP, uint16, error)
 	BindListen(addr *net.TCPAddr, conn *ConnPair) (*net.TCPListener, error)
 	BindAccept(*net.TCPListener, *ConnPair) (error)
-	ReadUH(conn *ConnPair) (int, error)
-	WriteUH([]byte, conn *ConnPair) (int, error)
+	ReadUH([]byte, *ConnPair) (int, error)
+	WriteUH([]byte, *ConnPair) (int, error)
 }

@@ -13,8 +13,8 @@ func main() {
 	ss.Log.Init("/tmp/ss.debug.log", ss.INFO)
     LH.Init()
     var S ss.Socks5
-    UH.Socks = S
-    LH.Socks = S
+    UH.S = S
+    LH.S = S
     TCPAddr, err := net.ResolveTCPAddr("tcp", "127.0.0.1:1081")
     if nil != err {
         fmt.Println("Error get TCP Address")
