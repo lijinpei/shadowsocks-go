@@ -230,12 +230,18 @@ func (s S5LH) GetRequestType(conn *ConnPair) (cmd byte, addr net.IP, port uint16
 }
 
 func (s S5LH) ReadLH(b []byte, conn *ConnPair) (n int, err error) {
+	if Debug {
+		Log.Info("ReadLH S5LH " + conn.Down.RemoteAddr().String())
+	}
 	conn.Down.SetReadDeadline(time.Now().Add(s.Deadtime))
 	n, err = conn.Down.Read(b)
 	return
 }
 
 func (s S5LH) WriteLH(b []byte, conn *ConnPair) (n int, err error) {
+	if Debug {
+		Log.Info("WriteLH S5LH " + conn.Down.RemoteAddr().String())
+	}
 	conn.Down.SetWriteDeadline(time.Now().Add(s.Deadtime))
 	n, err = conn.Down.Write(b)
 	return
@@ -281,10 +287,10 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 				}
 				return err
 			}
-			repPacket := make([]byte, l + 7)
-			copy(repPacket[0:5], []byte{0x05, 0x00, 0x00, atype, byte(l)})
-			copy(repPacket[5:5+l], bndAddr[l1:l2])
-			copy(repPacket[5+l:], []byte{byte(bndPort >> 8), byte(bndPort & 0xff)})
+			repPacket := make([]byte, l + 6)
+			copy(repPacket[0:4], []byte{0x05, 0x00, 0x00, atype})
+			copy(repPacket[4:4+l], bndAddr[l1:l2])
+			copy(repPacket[4+l:], []byte{byte(bndPort >> 8), byte(bndPort & 0xff)})
 			if Debug {
 				Log.Info(fmt.Sprintf("Replay packet length %v packet %v", len(repPacket), repPacket))
 			}
@@ -376,12 +382,18 @@ func (s S5UH) Connect(addr *net.IP, port uint16, conn *ConnPair) (bndAddr net.IP
 }
 
 func (s S5UH) ReadUH(b []byte, conn *ConnPair) (n int, err error) {
+	if Debug {
+		Log.Info("ReadUH S5UH " + conn.Up.RemoteAddr().String())
+	}
 	conn.Up.SetReadDeadline(time.Now().Add(s.Deadtime))
 	n, err = conn.Up.Read(b)
 	return
 }
 
 func (s S5UH) WriteUH(b []byte, conn *ConnPair) (n int, err error) {
+	if Debug {
+		Log.Info("WriteUH S5UH " + conn.Up.RemoteAddr().String())
+	}
 	conn.Up.SetWriteDeadline(time.Now().Add(s.Deadtime))
 	n, err = conn.Up.Write(b)
 	return
