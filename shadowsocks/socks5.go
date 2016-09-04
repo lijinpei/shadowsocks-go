@@ -134,7 +134,7 @@ type S5LH struct{
 func (s *S5LH) Init() {
 	s.MaxPacketLength =256
 	s.IsRunning = true
-	s.Deadtime, _ = time.ParseDuration("20s")
+	s.Deadtime, _ = time.ParseDuration("200s")
 	s.AuthRep = [2]byte{0x05, 0x00}
 }
 
@@ -347,7 +347,7 @@ type S5UH struct {
 func (s *S5UH) Init() {
 	s.MaxPacketLength =256
 	s.IsRunning = true
-	s.Deadtime, _ = time.ParseDuration("20s")
+	s.Deadtime, _ = time.ParseDuration("200s")
 }
 
 func (s S5UH) Connect(addr *net.IP, port uint16, conn *ConnPair) (bndAddr net.IP, bndPort uint16, err error) {
