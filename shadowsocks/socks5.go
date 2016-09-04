@@ -42,12 +42,16 @@ type Socks5 struct {
 func (s Socks5) Relay(conn *ConnPair) error {
 	if Debug {
 		Log.Info("Relay started")
+		Log.Info("write debug info to s.Down")
+		test := []byte{0x01, 0x02, 0x03, 0x04}
+		conn.Down.Write(test)
+		s.WriteLH(test, conn)
 	}
 	var mpl = s.S5LH.MaxPacketLength
 	if mpl > s.S5UH.MaxPacketLength {
 		mpl = s.S5UH.MaxPacketLength
 	}
-	var e1, e2 error
+	var eU, eD error
 	var c chan bool
 	// Upward
 	go func () {
@@ -57,22 +61,25 @@ func (s Socks5) Relay(conn *ConnPair) error {
 		b := make([]byte, mpl)
 		for {
 			var n1 int
+			var e1, e2 error
 			n1, e1 = s.ReadLH(b, conn)
-			if nil != e1{
-				if Debug {
-					Log.Info("Upward read " + e1.Error())
-				}
-				c <- true
-				return
-			}
 			if Debug {
 				Log.Info(fmt.Sprintf("Upward packet %v length %v", b, n1))
 			}
-			_, e1 = s.WriteUH(b[:n1], conn)
+			_, e2 = s.WriteUH(b[:n1], conn)
 			if nil != e1 {
 				if Debug {
-					Log.Info("Upward write " + e1.Error())
+					Log.Info("Upward read " + e1.Error())
 				}
+				eU = e1
+				c <- true
+				return
+			}
+			if nil != e2 {
+				if Debug {
+					Log.Info("Upward write " + e2.Error())
+				}
+				eU = e2
 				c <- true
 				return
 			}
@@ -86,21 +93,24 @@ func (s Socks5) Relay(conn *ConnPair) error {
 		b := make([]byte, mpl)
 		var n1 int
 		for {
-			n1, e2 = s.ReadUH(b, conn)
-			if nil != e2 {
-				if Debug {
-					Log.Info("Downward read " + e2.Error())
-				}
-				return
-			}
+			var e1, e2 error
+			n1, e1 = s.ReadUH(b, conn)
 			if Debug {
 				Log.Info(fmt.Sprintf("Downward packet %v length %v", b, n1))
 			}
 			_, e2 = s.WriteLH(b[:n1], conn)
+			if nil != e1 {
+				if Debug {
+					Log.Info("Downward read " + e1.Error())
+				}
+				eD = e1
+				return
+			}
 			if nil != e2 {
 				if Debug {
 					Log.Info("Downward write " + e2.Error())
 				}
+				eD = e2
 				return
 			}
 		}
@@ -112,11 +122,11 @@ func (s Socks5) Relay(conn *ConnPair) error {
 	if Debug {
 		Log.Info("Relay finished")
 	}
-	if nil != e1 {
-		return e1
+	if nil != eU {
+		return eU
 	}
-	if nil != e2 {
-		return e2
+	if nil != eD {
+		return eD
 	}
 	return nil
 }
@@ -233,14 +243,16 @@ func (s S5LH) ReadLH(b []byte, conn *ConnPair) (n int, err error) {
 	if Debug {
 		Log.Info("ReadLH S5LH " + conn.Down.RemoteAddr().String())
 	}
-	conn.Down.SetReadDeadline(time.Now().Add(s.Deadtime))
+	//conn.Down.SetReadDeadline(time.Now().Add(s.Deadtime))
 	n, err = conn.Down.Read(b)
 	return
 }
 
 func (s S5LH) WriteLH(b []byte, conn *ConnPair) (n int, err error) {
 	if Debug {
-		Log.Info("WriteLH S5LH " + conn.Down.RemoteAddr().String())
+		Log.Info(fmt.Sprintf("WriteLH %v S5LH %v", len(b), conn.Down.RemoteAddr().String()))
+		Log.Info(fmt.Sprintf("S5LH Deadtime %v", s.Deadtime.String()))
+		Log.Info(time.Now().String() + " " + time.Now().Add(s.Deadtime).String())
 	}
 	conn.Down.SetWriteDeadline(time.Now().Add(s.Deadtime))
 	n, err = conn.Down.Write(b)
