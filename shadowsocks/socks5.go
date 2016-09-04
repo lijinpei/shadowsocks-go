@@ -5,17 +5,12 @@ import (
 	"net"
 	"time"
 	"strconv"
-	"errors"
 	"fmt"
 //	"encoding/hex"
 )
 
 func dummyFmt () {
 	fmt.Println("123")
-}
-
-func dummyErr () error {
-	return errors.New("This is a dummy error")
 }
 
 const (
@@ -31,7 +26,7 @@ func (err Error) Error() string {
 }
 
 const (
-	ERR_SOCKS5_NO_AVAIL_AUTH Error = Error("no available socks5 authentication method")
+	ERR_NO_AVAIL_AUTH Error = Error("no available socks5 authentication method")
 )
 
 type Socks5 struct {
@@ -42,10 +37,6 @@ type Socks5 struct {
 func (s Socks5) Relay(conn *ConnPair) error {
 	if Debug {
 		Log.Info("Relay started")
-		Log.Info("write debug info to s.Down")
-		test := []byte{0x01, 0x02, 0x03, 0x04}
-		conn.Down.Write(test)
-		s.WriteLH(test, conn)
 	}
 	var mpl = s.S5LH.MaxPacketLength
 	if mpl > s.S5UH.MaxPacketLength {
@@ -63,15 +54,25 @@ func (s Socks5) Relay(conn *ConnPair) error {
 			var n1 int
 			var e1, e2 error
 			n1, e1 = s.ReadLH(b, conn)
-			if Debug {
-				Log.Info(fmt.Sprintf("Upward packet %v length %v", b, n1))
+			if 0 != n1 {
+				if Debug {
+					Log.Info(fmt.Sprintf("Upward packet %v length %v", b, n1))
+				}
+				_, e2 = s.WriteUH(b[:n1], conn)
 			}
-			_, e2 = s.WriteUH(b[:n1], conn)
 			if nil != e1 {
 				if Debug {
 					Log.Info("Upward read " + e1.Error())
 				}
 				eU = e1
+				c <- true
+				return
+			}
+			if 0 == n1 {
+				if Debug {
+					Log.Info("Upward client socket closed")
+				}
+				eU = nil
 				c <- true
 				return
 			}
@@ -95,15 +96,24 @@ func (s Socks5) Relay(conn *ConnPair) error {
 		for {
 			var e1, e2 error
 			n1, e1 = s.ReadUH(b, conn)
-			if Debug {
-				Log.Info(fmt.Sprintf("Downward packet %v length %v", b, n1))
+			if 0 != n1 {
+				if Debug {
+					Log.Info(fmt.Sprintf("Downward packet %v length %v", b, n1))
+				}
+				_, e2 = s.WriteLH(b[:n1], conn)
 			}
-			_, e2 = s.WriteLH(b[:n1], conn)
 			if nil != e1 {
 				if Debug {
 					Log.Info("Downward read " + e1.Error())
 				}
 				eD = e1
+				return
+			}
+			if 0 == n1 {
+				if Debug {
+					Log.Info("Downward remote socket closed")
+				}
+				eD = nil
 				return
 			}
 			if nil != e2 {
@@ -156,7 +166,7 @@ func (s S5LH) Authenticate(conn * ConnPair) error {
 	_, err := conn.Down.Read(b[0:2])
 	var l = int(b[1])
 	conn.Down.Read(b[2:2 + l])
-	err = ERR_SOCKS5_NO_AVAIL_AUTH
+	err = ERR_NO_AVAIL_AUTH
 	for _, v := range b[2:2 + l] {
 		if 0x00 == v {
 			err = nil
@@ -241,18 +251,16 @@ func (s S5LH) GetRequestType(conn *ConnPair) (cmd byte, addr net.IP, port uint16
 
 func (s S5LH) ReadLH(b []byte, conn *ConnPair) (n int, err error) {
 	if Debug {
-		Log.Info("ReadLH S5LH " + conn.Down.RemoteAddr().String())
+		Log.Info(fmt.Sprintf("ReadLH S5LH %v packet %v", conn.Down.RemoteAddr(), b))
 	}
-	//conn.Down.SetReadDeadline(time.Now().Add(s.Deadtime))
+	conn.Down.SetReadDeadline(time.Now().Add(s.Deadtime))
 	n, err = conn.Down.Read(b)
 	return
 }
 
 func (s S5LH) WriteLH(b []byte, conn *ConnPair) (n int, err error) {
 	if Debug {
-		Log.Info(fmt.Sprintf("WriteLH %v S5LH %v", len(b), conn.Down.RemoteAddr().String()))
-		Log.Info(fmt.Sprintf("S5LH Deadtime %v", s.Deadtime.String()))
-		Log.Info(time.Now().String() + " " + time.Now().Add(s.Deadtime).String())
+		Log.Info(fmt.Sprintf("WriteLH S5LH %v packet %v", conn.Down.RemoteAddr(), b))
 	}
 	conn.Down.SetWriteDeadline(time.Now().Add(s.Deadtime))
 	n, err = conn.Down.Write(b)
@@ -395,7 +403,7 @@ func (s S5UH) Connect(addr *net.IP, port uint16, conn *ConnPair) (bndAddr net.IP
 
 func (s S5UH) ReadUH(b []byte, conn *ConnPair) (n int, err error) {
 	if Debug {
-		Log.Info("ReadUH S5UH " + conn.Up.RemoteAddr().String())
+		Log.Info(fmt.Sprintf("ReadUH S5LH %v packet %v", conn.Up.RemoteAddr(), b))
 	}
 	conn.Up.SetReadDeadline(time.Now().Add(s.Deadtime))
 	n, err = conn.Up.Read(b)
@@ -404,7 +412,7 @@ func (s S5UH) ReadUH(b []byte, conn *ConnPair) (n int, err error) {
 
 func (s S5UH) WriteUH(b []byte, conn *ConnPair) (n int, err error) {
 	if Debug {
-		Log.Info("WriteUH S5UH " + conn.Up.RemoteAddr().String())
+		Log.Info(fmt.Sprintf("WriteUH S5LH %v packet %v", conn.Up.RemoteAddr(), b))
 	}
 	conn.Up.SetWriteDeadline(time.Now().Add(s.Deadtime))
 	n, err = conn.Up.Write(b)
