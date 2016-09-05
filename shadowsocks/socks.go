@@ -6,10 +6,16 @@ import (
 
 // ConnPair represents a pair of connections to be relayed
 type ConnPair struct {
-	Up net.Conn
-	Down net.Conn
-	UpChan chan *[]byte
-	DownChan chan *[]byte
+	// Up: as upward connection in connect mode, and bind connection in bind mode
+	Up *net.TCPConn
+	//UDPUp *net.UDPConn
+	Down *net.TCPConn
+	//UDPDown *net.UDPConn
+	// UpChan, DownChan: UDP Realy sent three slices per packet
+	// addr, port, data
+	// addr/port are in network endian order
+	UpChan chan []byte
+	DownChan chan []byte
 }
 
 // SocksHalf represents half of relay server
@@ -26,20 +32,25 @@ type Socks interface {
 	BindAccept(*net.TCPListener, *ConnPair) (error)
 	// Methods shared by both half
 	Relay(*ConnPair) error
+	//UDPRelay(*ConnPair) error
 //	UDPRelay(, *UDPConn) error
 }
 
 // Make Sure those two inferface have no methods with the same name
 type SocksLH interface {
 	Listen(*net.TCPAddr) error
-	ReadLH([]byte, *ConnPair) (int, error)
-	WriteLH([]byte, *ConnPair) (int, error)
+	ReadLH([]byte, *ConnPair) error
+	WriteLH(*ConnPair) error
+	//UDPReadLH(*ConnPair, net.IP, uint16) error
+	//UDPWriteLH(*ConnPair) error
 }
 
 type SocksUH interface {
 	Connect(*net.IP, uint16, *ConnPair) (net.IP, uint16, error)
 	BindListen(addr *net.TCPAddr, conn *ConnPair) (*net.TCPListener, error)
 	BindAccept(*net.TCPListener, *ConnPair) (error)
-	ReadUH([]byte, *ConnPair) (int, error)
-	WriteUH([]byte, *ConnPair) (int, error)
+	ReadUH(*ConnPair)  error
+	WriteUH(*ConnPair) error
+	//UDPReadUH(*ConnPair) error
+	//UDPWrite(*ConnPair) error
 }

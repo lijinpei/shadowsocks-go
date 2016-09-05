@@ -1,7 +1,7 @@
 package shadowsocks
 
 import (
-//	"io"
+	"io"
 	"net"
 	"time"
 	"strconv"
@@ -38,122 +38,55 @@ func (s Socks5) Relay(conn *ConnPair) error {
 	if DbgCtlFlow {
 		Log.Debug("Relay started")
 	}
-	var mpl = s.S5LH.MaxPacketLength
-	if mpl > s.S5UH.MaxPacketLength {
-		mpl = s.S5UH.MaxPacketLength
-	}
-	var eU, eD error
 	var c chan bool
-	// Upward
 	go func () {
+		s.S5UH.ReadUH(conn)
+		c <- true
 		if DbgCtlFlow {
-			Log.Debug("Upward started")
-		}
-		b := make([]byte, mpl)
-		for {
-			var n1 int
-			var e1, e2 error
-			n1, e1 = s.ReadLH(b, conn)
-			if 0 != n1 {
-				if DbgLogPacket {
-					Log.Debug(fmt.Sprintf("Upward packet %v length %v", b, n1))
-				}
-				_, e2 = s.WriteUH(b[:n1], conn)
-			}
-			if nil != e1 {
-				if DbgCtlFlow {
-					Log.Debug("Upward read " + e1.Error())
-				}
-				eU = e1
-				c <- true
-				return
-			}
-			if 0 == n1 {
-				if DbgCtlFlow {
-					Log.Debug("Upward client socket closed")
-				}
-				eU = nil
-				c <- true
-				return
-			}
-			if nil != e2 {
-				if DbgCtlFlow {
-					Log.Debug("Upward write " + e2.Error())
-				}
-				eU = e2
-				c <- true
-				return
-			}
+			Log.Debug("S5UH ReadUH finished")
 		}
 	} ()
-	// Downward
-	func () {
+	go func () {
+		s.S5UH.WriteUH(conn)
+		c <- true
 		if DbgCtlFlow {
-			Log.Debug("Downward started")
-		}
-		b := make([]byte, mpl)
-		var n1 int
-		for {
-			var e1, e2 error
-			n1, e1 = s.ReadUH(b, conn)
-			if 0 != n1 {
-				if DbgLogPacket {
-					Log.Debug(fmt.Sprintf("Downward packet %v length %v", b, n1))
-				}
-				_, e2 = s.WriteLH(b[:n1], conn)
-			}
-			if nil != e1 {
-				if DbgCtlFlow {
-					Log.Debug("Downward read " + e1.Error())
-				}
-				eD = e1
-				return
-			}
-			if 0 == n1 {
-				if DbgCtlFlow {
-					Log.Debug("Downward remote socket closed")
-				}
-				eD = nil
-				return
-			}
-			if nil != e2 {
-				if DbgCtlFlow {
-					Log.Debug("Downward write " + e2.Error())
-				}
-				eD = e2
-				return
-			}
+			Log.Debug("S5UH WriteUH finished")
 		}
 	} ()
-	<- c
-	// Clear up
-	conn.Down.Close()
+	go func () {
+		s.S5LH.ReadLH(conn)
+		c <- true
+		if DbgCtlFlow {
+			Log.Debug("S5LH ReadLH finished")
+		}
+	} ()
+	go func () {
+		s.S5LH.WriteLH(conn)
+		c <- true
+		if DbgCtlFlow {
+			Log.Debug("S5LH WriteLH finished")
+		}
+	} ()
+	<-c;<-c;<-c;<-c;
 	conn.Up.Close()
+	conn.Down.Close()
 	if DbgCtlFlow {
 		Log.Debug("Relay finished")
-	}
-	if nil != eU {
-		return eU
-	}
-	if nil != eD {
-		return eD
 	}
 	return nil
 }
 
 // Suppose only one upper half and lower half now
 // Socks5LowerHalf
-type S5LH struct{
+type S5LH struct {
 	S Socks
 	Deadtime time.Duration
-	IsRunning bool
 	MaxPacketLength uint
 	AuthRep [2]byte
 }
 
 func (s *S5LH) Init() {
 	s.MaxPacketLength =256
-	s.IsRunning = true
 	s.Deadtime, _ = time.ParseDuration("200s")
 	s.AuthRep = [2]byte{0x05, 0x00}
 }
@@ -248,22 +181,73 @@ func (s S5LH) GetRequestType(conn *ConnPair) (cmd, atype byte, addr net.IP, port
 	return
 }
 
-func (s S5LH) ReadLH(b []byte, conn *ConnPair) (n int, err error) {
-	if DbgLogPacket {
-		Log.Debug(fmt.Sprintf("ReadLH S5LH %v packet %v", conn.Down.RemoteAddr(), b))
+func connToChan(conn *net.TCPConn, c chan []byte, t time.Duration, mpl uint) (err error) {
+	if Debug {
+		Log.Debug(fmt.Sprintf("connToChan timeout %v", t))
 	}
-	conn.Down.SetReadDeadline(time.Now().Add(s.Deadtime))
-	n, err = conn.Down.Read(b)
-	return
+	for {
+		var b []byte = make([]byte, mpl)
+		conn.SetReadDeadline(time.Now().Add(t))
+		var n int
+		n, err = conn.Read(b)
+		if io.EOF == err {
+			close(c)
+			return
+		}
+		if DbgLogPacket {
+			Log.Debug(fmt.Sprintf("connToChan packet %v", b))
+		}
+		if nil != err {
+			return err
+		}
+		c <- b[:n]
+	}
 }
 
-func (s S5LH) WriteLH(b []byte, conn *ConnPair) (n int, err error) {
-	if DbgLogPacket {
-		Log.Debug(fmt.Sprintf("WriteLH S5LH %v packet %v", conn.Down.RemoteAddr(), b))
+func chanToConn(conn *net.TCPConn, c chan []byte, t time.Duration) (err error) {
+	if Debug {
+		Log.Debug(fmt.Sprintf("chanToConn timeout %v", t))
 	}
-	conn.Down.SetWriteDeadline(time.Now().Add(s.Deadtime))
-	n, err = conn.Down.Write(b)
-	return
+	for {
+		var b []byte
+		b = <- c
+		if nil == b {
+			return nil
+		}
+		conn.SetWriteDeadline(time.Now().Add(t))
+		_, err = conn.Write(b)
+		if DbgLogPacket {
+			Log.Debug(fmt.Sprintf("chanToConn packet %v", b))
+		}
+		if nil != err {
+			return err
+		}
+	}
+}
+func (s S5LH) ReadLH(conn *ConnPair) (err error) {
+	if DbgCtlFlow {
+		Log.Debug("S5LH ReadLH started")
+	}
+	err = connToChan(conn.Down, conn.UpChan, s.Deadtime, s.MaxPacketLength)
+	if Debug {
+		Log.Debug(err.Error())
+	}
+	return err
+}
+
+func (s S5LH) WriteLH(conn *ConnPair) (err error) {
+	if DbgCtlFlow {
+		Log.Debug("S5LH WriteLH started")
+	}
+	err = chanToConn(conn.Down, conn.DownChan, s.Deadtime)
+	if Debug {
+		var errStr string
+		if nil != err {
+			errStr = err.Error()
+		}
+		Log.Debug(errStr)
+	}
+	return err
 }
 
 func (s S5LH) Deal(conn *ConnPair) (err error) {
@@ -276,9 +260,18 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 	}
 	cmd, atype, addr, port, err := s.GetRequestType(conn)
 	if DbgCtlFlow {
-		Log.Debug(fmt.Sprintf("GetRequestType results: cmd %v atype %v addr %v", cmd, atype, addr))
+		var addrStr string
+		if atype != 0x03 {
+			addrStr = addr.String()
+		} else {
+			addrStr = string(addr)
+		}
+		Log.Debug(fmt.Sprintf("GetRequestType results: cmd %v atype %v addr %v port %v", cmd, atype, addrStr, port))
 	}
 	if nil != err {
+		if DbgCtlFlow {
+			Log.Debug("Deal returned")
+		}
 		return
 	}
 	// DNS Look up
@@ -300,6 +293,9 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 		}
 	}
 	if (0x01 != atype) && (0x04 != atype) {
+		if DbgCtlFlow {
+			Log.Debug("Deal returned")
+		}
 		return Error("Socks5 Request Wrong atype")
 	}
 	switch cmd {
@@ -359,16 +355,15 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 func (s S5LH) Listen(addr *net.TCPAddr) error {
 	if DbgCtlFlow {
 		Log.Debug("Listen started")
-		Log.Debug(fmt.Sprintf("%v", s.IsRunning))
 	}
 	listener, _ := net.ListenTCP("tcp", addr)
 	//listener.SetDeadline(time.Now().Add(s.Deadtime))
-	for s.IsRunning {
+	for {
 		conn, _ := listener.AcceptTCP()
 		if DbgCtlFlow {
 			Log.Debug("Accept connection")
 		}
-		go s.Deal(&ConnPair{Down:conn, Up:nil, UpChan:make(chan *[]byte, 20), DownChan:make(chan *[]byte, 20)})
+		go s.Deal(&ConnPair{Down:conn, Up:nil, UpChan:make(chan []byte, 20), DownChan:make(chan []byte, 20)})
 	}
 	return nil
 }
@@ -419,7 +414,7 @@ func (s S5UH) Connect(atype byte, addr net.IP, port uint16, conn *ConnPair) (bnd
 	tcpAddr, err = net.ResolveTCPAddr(network, localAddrStr)
 	bndAddr = tcpAddr.IP
 	bndPort = uint16(tcpAddr.Port)
-	conn.Up = newConn
+	conn.Up = newConn.(*net.TCPConn)
 	if DbgCtlFlow {
 		Log.Debug("Connect finished")
 		Log.Debug(fmt.Sprintf("Connect local results: addr %v port %v err %v", bndAddr, bndPort, err))
@@ -427,22 +422,30 @@ func (s S5UH) Connect(atype byte, addr net.IP, port uint16, conn *ConnPair) (bnd
 	return
 }
 
-func (s S5UH) ReadUH(b []byte, conn *ConnPair) (n int, err error) {
-	if DbgLogPacket {
-		Log.Debug(fmt.Sprintf("ReadUH S5LH %v packet %v", conn.Up.RemoteAddr(), b))
+func (s S5UH) ReadUH(conn *ConnPair) (err error) {
+	if DbgCtlFlow {
+		Log.Debug("S5UH ReadUH started")
 	}
-	conn.Up.SetReadDeadline(time.Now().Add(s.Deadtime))
-	n, err = conn.Up.Read(b)
-	return
+	err = connToChan(conn.Up, conn.DownChan, s.Deadtime, s.MaxPacketLength)
+	if Debug {
+		Log.Debug(err.Error())
+	}
+	return err
 }
 
-func (s S5UH) WriteUH(b []byte, conn *ConnPair) (n int, err error) {
-	if DbgLogPacket {
-		Log.Debug(fmt.Sprintf("WriteUH S5LH %v packet %v", conn.Up.RemoteAddr(), b))
+func (s S5UH) WriteUH(conn *ConnPair) (err error) {
+	if DbgCtlFlow {
+		Log.Debug("S5UH WriteUH started")
 	}
-	conn.Up.SetWriteDeadline(time.Now().Add(s.Deadtime))
-	n, err = conn.Up.Write(b)
-	return
+	err = chanToConn(conn.Up, conn.UpChan, s.Deadtime)
+	if Debug {
+		var errStr string
+		if nil != err {
+			errStr = err.Error()
+		}
+		Log.Debug(errStr)
+	}
+	return err
 }
 
 func (S5UH) BindListen(lAddr *net.TCPAddr, conn *ConnPair) (*net.TCPListener, error) {
@@ -459,7 +462,7 @@ func (s S5UH) BindAccept(listener *net.TCPListener, conn *ConnPair) error {
 	}
 	err := listener.SetDeadline(time.Now().Add(s.Deadtime))
 	newConn, err := listener.Accept()
-	conn.Up = newConn
+	conn.Up = newConn.(*net.TCPConn)
 	return err
 }
 
