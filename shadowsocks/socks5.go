@@ -29,6 +29,24 @@ const (
 	ERR_NO_AVAIL_AUTH Error = Error("no available socks5 authentication method")
 )
 
+func lookupDNS(host []byte) (atype byte, addr []byte, err error) {
+		var ips []net.IP
+		ips, err = net.LookupIP(string(addr))
+		if nil != err {
+			return
+		}
+		addr = ips[0].To4()
+		if nil == addr {
+			addr = ips[0]
+			atype = 0x04
+		} else {
+			atype = 0x01
+		}
+		if DbgCtlFlow {
+			Log.Debug(fmt.Sprintf("Deal DNS lookup results: atype %v addr %v", atype, addr))
+		}
+}
+
 type Socks5 struct {
 	S5LH
 	S5UH
@@ -224,6 +242,7 @@ func chanToConn(conn *net.TCPConn, c chan []byte, t time.Duration) (err error) {
 		}
 	}
 }
+
 func (s S5LH) ReadLH(conn *ConnPair) (err error) {
 	if DbgCtlFlow {
 		Log.Debug("S5LH ReadLH started")
@@ -274,24 +293,9 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 		}
 		return
 	}
-	// DNS Look up
-	if 0x03 == atype {
-		var ips []net.IP
-		ips, err = net.LookupIP(string(addr))
-		if nil != err {
-			return
-		}
-		addr = ips[0].To4()
-		if nil == addr {
-			addr = ips[0]
-			atype = 0x04
-		} else {
-			atype = 0x01
-		}
-		if DbgCtlFlow {
-			Log.Debug(fmt.Sprintf("Deal DNS lookup results: atype %v addr %v", atype, addr))
-		}
-	}
+    if (0x03 == atype) {
+        atype, addr, err = lookupDNS(addr)
+    }
 	if (0x01 != atype) && (0x04 != atype) {
 		if DbgCtlFlow {
 			Log.Debug("Deal returned")
@@ -368,6 +372,41 @@ func (s S5LH) Listen(addr *net.TCPAddr) error {
 	return nil
 }
 
+func (s S5LH) UDPReadLH(conn *ConnPair, srcAddr net.IP, srcPort uint16) (err error) {
+    for {
+        conn.Down.SetReadDeadline(time.Now.Add(s.Deadtime))
+        var n int
+        var udpAddr *net.UDPAddr
+        var b = make([]byte, s.MaxPacketLength)
+        n, b, udpAddr = conn.Down.ReadFromUDP(b)
+        if !udpAddr.IP.Equal(srcAddr) || (udpAddr.Port != int(SrcPort)) {
+            continue
+        }
+        if n < 7 {
+            continue
+        }
+        if 0x00 != b[2] {
+            continue
+        }
+        var atype = b[3]
+        var s, l byte
+        switch atype {
+        case 0x01 :
+            s = 0
+            l = 4
+        case 0x04 :
+            s = 0
+            l = 16
+        case 0x03:
+            s = 1
+            l = b[4] + 1
+        }
+        conn.UpChan <- {atype}
+        conn.UpChan <- b[4+s:4+l]
+		connUpChan <- b[4+l:4+l+2]
+		connUpChan <- b[4+l+2:]
+    }
+}
 func (s *S5LH) SetDeadline(t time.Duration) error {
 	s.Deadtime = t
 	return nil

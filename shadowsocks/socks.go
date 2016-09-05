@@ -8,11 +8,11 @@ import (
 type ConnPair struct {
 	// Up: as upward connection in connect mode, and bind connection in bind mode
 	Up *net.TCPConn
-	//UDPUp *net.UDPConn
+	UDPUp *net.UDPConn
 	Down *net.TCPConn
-	//UDPDown *net.UDPConn
-	// UpChan, DownChan: UDP Realy sent three slices per packet
-	// addr, port, data
+	UDPDown *net.UDPConn
+	//  UpChan, DownChan: UDP Realy sent four slices per packet
+	// atype, addr, port, data
 	// addr/port are in network endian order
 	UpChan chan []byte
 	DownChan chan []byte
@@ -32,8 +32,7 @@ type Socks interface {
 	BindAccept(*net.TCPListener, *ConnPair) (error)
 	// Methods shared by both half
 	Relay(*ConnPair) error
-	//UDPRelay(*ConnPair) error
-//	UDPRelay(, *UDPConn) error
+	UDPRelay(*ConnPair) error
 }
 
 // Make Sure those two inferface have no methods with the same name
@@ -41,8 +40,8 @@ type SocksLH interface {
 	Listen(*net.TCPAddr) error
 	ReadLH([]byte, *ConnPair) error
 	WriteLH(*ConnPair) error
-	//UDPReadLH(*ConnPair, net.IP, uint16) error
-	//UDPWriteLH(*ConnPair) error
+	UDPReadLH(*ConnPair, net.IP, uint16) error
+	UDPWriteLH(*ConnPair) error
 }
 
 type SocksUH interface {
@@ -51,6 +50,6 @@ type SocksUH interface {
 	BindAccept(*net.TCPListener, *ConnPair) (error)
 	ReadUH(*ConnPair)  error
 	WriteUH(*ConnPair) error
-	//UDPReadUH(*ConnPair) error
-	//UDPWrite(*ConnPair) error
+	UDPReadUH(*ConnPair) error
+	UDPWrite(*ConnPair) error
 }
