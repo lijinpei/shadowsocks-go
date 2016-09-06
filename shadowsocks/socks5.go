@@ -231,9 +231,6 @@ func connToChan(conn *net.TCPConn, c chan []byte, t time.Duration, mpl uint) (er
 }
 
 func chanToConn(conn *net.TCPConn, c chan []byte, t time.Duration) (err error) {
-	if Debug {
-		Log.Debug(fmt.Sprintf("chanToConn timeout %v", t))
-	}
 	for {
 		var b []byte
 		b = <- c
@@ -431,7 +428,11 @@ func (s S5LH) Listen(addr *net.TCPAddr) error {
 	listener, _ := net.ListenTCP("tcp", addr)
 	//listener.SetDeadline(time.Now().Add(s.Deadtime))
 	for {
-		conn, _ := listener.AcceptTCP()
+		conn, err := listener.AcceptTCP()
+		if nil != err {
+			Log.Debug("Accept connection error " + err.Error())
+			continue
+		}
 		if DbgCtlFlow {
 			Log.Debug("Accept connection")
 		}
