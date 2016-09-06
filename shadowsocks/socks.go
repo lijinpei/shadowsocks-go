@@ -20,6 +20,8 @@ type ConnPair struct {
 	ClientUDPAddr *net.UDPAddr
 	UDPAllowedIP *net.IP
 	UDPAllowedPort *uint16
+	UpIV []byte
+	DownIV []byte
 }
 
 // SocksHalf represents half of relay server

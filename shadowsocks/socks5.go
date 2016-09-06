@@ -25,9 +25,7 @@ func (err Error) Error() string {
 	return string(err)
 }
 
-const (
-	ERR_NO_AVAIL_AUTH Error = Error("no available socks5 authentication method")
-)
+const  ERR_NO_AVAIL_AUTH Error = Error("no available socks5 authentication method")
 
 func lookupDNS(host []byte) (atype byte, addr []byte, err error) {
 		var ips []net.IP
@@ -56,7 +54,7 @@ type Socks5 struct {
 	S5UH
 }
 
-func (s Socks5) Relay(conn *ConnPair) error {
+func Relay(s Socks, conn *ConnPair) error {
 	if DbgCtlFlow {
 		Log.Debug("Relay started")
 	}
@@ -98,7 +96,7 @@ func (s Socks5) Relay(conn *ConnPair) error {
 	return nil
 }
 
-func (s Socks5) UDPRelay(conn *ConnPair) (err error) {
+func UDPRelay(s Socks, conn *ConnPair) (err error) {
 	if DbgCtlFlow {
 		Log.Debug("UDP Relay started")
 	}
@@ -183,7 +181,7 @@ func (s S5LH) Authenticate(conn * ConnPair) error {
 	return err
 }
 
-func (s S5LH) GetRequestType(conn *ConnPair) (cmd, atype byte, addr net.IP, port uint16, err error) {
+func GetRequestType(conn *ConnPair) (cmd, atype byte, addr net.IP, port uint16, err error) {
 	if DbgCtlFlow {
 		Log.Debug("GetRequestType started")
 	}
@@ -245,49 +243,11 @@ func (s S5LH) GetRequestType(conn *ConnPair) (cmd, atype byte, addr net.IP, port
 	return
 }
 
-func connToChan(conn *net.TCPConn, c chan []byte, t time.Duration, mpl uint) (err error) {
-	for {
-		var b []byte = make([]byte, mpl)
-		conn.SetReadDeadline(time.Now().Add(t))
-		var n int
-		n, err = conn.Read(b)
-		if io.EOF == err {
-			close(c)
-			return
-		}
-		if DbgLogPacket {
-			Log.Debug(fmt.Sprintf("connToChan packet %v", b))
-		}
-		if nil != err {
-			return err
-		}
-		c <- b[:n]
-	}
-}
-
-func chanToConn(conn *net.TCPConn, c chan []byte, t time.Duration) (err error) {
-	for {
-		var b []byte
-		b = <- c
-		if nil == b {
-			return nil
-		}
-		conn.SetWriteDeadline(time.Now().Add(t))
-		_, err = conn.Write(b)
-		if DbgLogPacket {
-			Log.Debug(fmt.Sprintf("chanToConn packet %v", b))
-		}
-		if nil != err {
-			return err
-		}
-	}
-}
-
 func (s S5LH) ReadLH(conn *ConnPair) (err error) {
 	if DbgCtlFlow {
 		Log.Debug("S5LH ReadLH started")
 	}
-	err = connToChan(conn.Down, conn.UpChan, s.Deadtime, s.MaxPacketLength)
+	err = connToChan(conn.Down, conn.UpChan, s.Deadtime, s.MaxPacketLength, nil)
 	if Debug && (nil != err) {
 		Log.Debug("S5LU ReadLH error " + err.Error())
 	}
@@ -298,7 +258,7 @@ func (s S5LH) WriteLH(conn *ConnPair) (err error) {
 	if DbgCtlFlow {
 		Log.Debug("S5LH WriteLH started")
 	}
-	err = chanToConn(conn.Down, conn.DownChan, s.Deadtime)
+	err = chanToConn(conn.Down, conn.DownChan, s.Deadtime, nil)
 	if Debug && nil != err {
 		Log.Debug("S5LH WriteLH error " + err.Error())
 	}
@@ -690,7 +650,7 @@ func (s S5UH) UDPWriteUH(conn *ConnPair) (err error) {
 	return
 }
 
-func (s S5UH) SetDeadline(t time.Duration) error {
+func (s *S5UH) SetDeadline(t time.Duration) error {
 	s.Deadtime = t
 	return nil
 }
