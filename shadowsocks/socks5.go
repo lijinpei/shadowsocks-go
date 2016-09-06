@@ -45,6 +45,7 @@ func lookupDNS(host []byte) (atype byte, addr []byte, err error) {
 		if DbgCtlFlow {
 			Log.Debug(fmt.Sprintf("Deal DNS lookup results: atype %v addr %v", atype, addr))
 		}
+		return
 }
 
 type Socks5 struct {
@@ -91,6 +92,10 @@ func (s Socks5) Relay(conn *ConnPair) error {
 	if DbgCtlFlow {
 		Log.Debug("Relay finished")
 	}
+	return nil
+}
+
+func (s Socks5) UDPRelay(conn *ConnPair) (err error) {
 	return nil
 }
 
@@ -375,31 +380,42 @@ func (s S5LH) Listen(addr *net.TCPAddr) error {
 func (s S5LH) UDPReadLH(conn *ConnPair, srcAddr net.IP, srcPort uint16) (err error) {
     for conn.UDPRunning {
         var n int
-        var udpAddr *net.UDPAddr
+		var addr net.Addr
         var b = make([]byte, s.MaxPacketLength)
-        conn.Down.SetReadDeadline(time.Now.Add(s.Deadtime))
-        n, b, udpAddr = conn.Down.ReadFromUDP(b)
-        if !udpAddr.IP.Equal(srcAddr) || (udpAddr.Port != int(SrcPort)) {
-            continue
-        }
+        conn.UDPDown.SetReadDeadline(time.Now().Add(s.Deadtime))
+        n, addr, err = conn.UDPDown.ReadFrom(b)
         if n < 7 {
             continue
         }
         if 0x00 != b[2] {
             continue
         }
-		connn.UpChan <- b[2:]
+		if nil != err {
+			return
+		}
+		var udpAddr *net.UDPAddr
+		udpAddr, err = net.ResolveUDPAddr(addr.Network(), addr.String())
+        if !udpAddr.IP.Equal(srcAddr) || (udpAddr.Port != int(srcPort)) {
+            continue
+        }
+		if nil != err {
+			return
+		}
+		conn.UpChan <- b[2:]
+	}
+	return nil
 }
 
-func (s S5LH) UDPWriteLH(conn *ConnPair) error {
-	for conn.UDPRuning {
+func (s S5LH) UDPWriteLH(conn *ConnPair) (error) {
+	for conn.UDPRunning {
 		var b []byte
 		b = <- conn.DownChan
 		go func () {
-			conn.Down.SetWriteDeadline(time.Now().Add(s.Deadtime))
-			conn.Down.WriteToUDP(b, conn.ClientUDPAddr)
-		}
+			conn.UDPDown.SetWriteDeadline(time.Now().Add(s.Deadtime))
+			conn.UDPDown.WriteToUDP(b, conn.ClientUDPAddr)
+		} ()
 	}
+	return nil
 }
 func (s *S5LH) SetDeadline(t time.Duration) error {
 	s.Deadtime = t
@@ -504,8 +520,8 @@ func (s S5UH) UDPReadUH(conn *ConnPair) (err error) {
 		var addr *net.UDPAddr
 		var n int
 		var b []byte = make([]byte, s.MaxPacketLength + 22)
-		conn.UDPUp.SetReadDeadline(time.Now().Add(conn.Deadtime))
-		n, addr, err = conn.UDPUp.ReadUDP(b[22:])
+		conn.UDPUp.SetReadDeadline(time.Now().Add(s.Deadtime))
+		n, addr, err = conn.UDPUp.ReadFromUDP(b[22:])
 		if nil != err {
 			return
 		}
@@ -517,21 +533,22 @@ func (s S5UH) UDPReadUH(conn *ConnPair) (err error) {
 			b[15] = 0x01
 			b = b[15:22+n]
 		} else {
-			copy(b[4:20], addr)
+			copy(b[4:20], addr.IP)
 			b[3] = 0x04
 			b = b[3:22+n]
 		}
 		conn.DownChan <- b
 	}
+	return nil
 }
 
 func (s S5UH) UDPWritingUH(conn *ConnPair) (err error) {
-	for conn.UDPRuning {
+	for conn.UDPRunning {
 		b := <-conn.UpChan
 		atype := b[0]
 		//TODO: what is ipv6 zone?
 		addr := &net.UDPAddr{}
-		switch atype: {
+		switch atype {
 		case 0x01:
 			addr.IP = b[1:5]
 			addr.Port = (int(b[5]) << 8) | int(b[6])
