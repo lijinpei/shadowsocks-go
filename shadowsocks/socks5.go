@@ -31,8 +31,11 @@ const (
 
 func lookupDNS(host []byte) (atype byte, addr []byte, err error) {
 		var ips []net.IP
-		ips, err = net.LookupIP(string(addr))
+		ips, err = net.LookupIP(string(host))
 		if nil != err {
+			if DbgCtlFlow {
+				Log.Debug("DNS lookup error " + err.Error() + " " + string(host))
+			}
 			return
 		}
 		addr = ips[0].To4()
@@ -299,7 +302,15 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 		return
 	}
     if (0x03 == atype) {
-        atype, addr, err = lookupDNS(addr)
+		if DbgCtlFlow {
+			Log.Debug("DNS lookup " + string(addr))
+		}
+		var addr1 []byte
+        atype, addr1, err = lookupDNS(addr)
+		addr = addr1
+		if DbgCtlFlow {
+			Log.Debug(fmt.Sprintf("GetRequestType results: cmd %v atype %v addr %v port %v", cmd, atype, string(addr), port))
+		}
     }
 	if (0x01 != atype) && (0x04 != atype) {
 		if DbgCtlFlow {
@@ -341,6 +352,9 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 				Log.Debug(fmt.Sprintf("Replay packet length %v packet %v", len(repPacket), repPacket))
 			}
 			_, err = conn.Down.Write(repPacket)
+			if nil != err {
+				return
+			}
 			err = s.S.Relay(conn)
 		case SOCKS_BIND:
 			if DbgCtlFlow {
@@ -354,6 +368,55 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 			if DbgCtlFlow || DbgUDP {
 				Log.Debug("Deal udp associate")
 			}
+			var clientStr, remoteStr string
+			var repPacket []byte
+			if 0x01 == atype {
+				clientStr = "0.0.0.0:0"
+				remoteStr = "0.0.0.0:0"
+				repPacket = make([]byte, 10)
+				repPacket[3] = 0x01
+			} else {
+				clientStr = "[::1]:0"
+				remoteStr = "[::1]:0"
+				repPacket = make([]byte, 22)
+				repPacket[3] = 0x04
+			}
+			repPacket[0] = 0x05
+			var clientAddr, remoteAddr *net.UDPAddr
+			clientAddr, err = net.ResolveUDPAddr("udp", clientStr)
+			if nil != err {
+				return
+			}
+			// TODO: better way to detect ipv4/ipv6
+			if 0x01 == atype {
+				copy(repPacket[4:8], clientAddr.IP)
+				repPacket[8] = byte(clientAddr.Port >> 8)
+				repPacket[9] = byte(clientAddr.Port & 0xff)
+			} else {
+				copy(repPacket[4:20], clientAddr.IP)
+				repPacket[20] = byte(clientAddr.Port >> 8)
+				repPacket[21] = byte(clientAddr.Port & 0xff)
+			}
+			remoteAddr, err = net.ResolveUDPAddr("udp", remoteStr)
+			if nil != err {
+				return
+			}
+			if DbgLogPacket {
+				Log.Debug(fmt.Sprintf("Replay packet length %v packet %v", len(repPacket), repPacket))
+			}
+			_, err = conn.Down.Write(repPacket)
+			if nil != err {
+				return
+			}
+			conn.UDPDown, err = net.ListenUDP("udp", clientAddr)
+			if nil != err {
+				return
+			}
+			conn.UDPUp, err  = net.ListenUDP("udp", remoteAddr)
+			if nil != err {
+				return
+			}
+			err = s.S.UDPRelay(conn)
 	}
 	if DbgCtlFlow {
 		Log.Debug("Deal finished")

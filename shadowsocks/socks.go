@@ -54,4 +54,5 @@ type SocksUH interface {
 	WriteUH(*ConnPair) error
 	UDPReadUH(*ConnPair) error
 	UDPWrite(*ConnPair) error
+	UDPListen(ipv6 bool) (*net.UDPConn, error)
 }
