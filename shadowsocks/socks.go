@@ -18,6 +18,8 @@ type ConnPair struct {
 	DownChan chan []byte
 	UDPRunning bool
 	ClientUDPAddr *net.UDPAddr
+	UDPAllowedIP *net.IP
+	UDPAllowedPort *uint16
 }
 
 // SocksHalf represents half of relay server
@@ -53,6 +55,6 @@ type SocksUH interface {
 	ReadUH(*ConnPair)  error
 	WriteUH(*ConnPair) error
 	UDPReadUH(*ConnPair) error
-	UDPWrite(*ConnPair) error
+	UDPWriteUH(*ConnPair) error
 	UDPListen(ipv6 bool) (*net.UDPConn, error)
 }

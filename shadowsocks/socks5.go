@@ -99,6 +99,44 @@ func (s Socks5) Relay(conn *ConnPair) error {
 }
 
 func (s Socks5) UDPRelay(conn *ConnPair) (err error) {
+	if DbgCtlFlow {
+		Log.Debug("UDP Relay started")
+	}
+	var c chan bool
+	go func () {
+		s.S5UH.UDPReadUH(conn)
+		c <- true
+		if DbgCtlFlow {
+			Log.Debug("S5UH UDPReadUH finished")
+		}
+	} ()
+	go func () {
+		s.S5UH.UDPWriteUH(conn)
+		c <- true
+		if DbgCtlFlow {
+			Log.Debug("S5UH UDPWriteUH finished")
+		}
+	} ()
+	go func () {
+		s.S5LH.UDPReadLH(conn)
+		c <- true
+		if DbgCtlFlow {
+			Log.Debug("S5LH UDPReadLH finished")
+		}
+	} ()
+	go func () {
+		s.S5LH.UDPWriteLH(conn)
+		c <- true
+		if DbgCtlFlow {
+			Log.Debug("S5LH UDPWriteLH finished")
+		}
+	} ()
+	<-c;<-c;<-c;<-c;
+	conn.UDPUp.Close()
+	conn.UDPDown.Close()
+	if DbgCtlFlow {
+		Log.Debug("UDPRelay finished")
+	}
 	return nil
 }
 
@@ -208,9 +246,6 @@ func (s S5LH) GetRequestType(conn *ConnPair) (cmd, atype byte, addr net.IP, port
 }
 
 func connToChan(conn *net.TCPConn, c chan []byte, t time.Duration, mpl uint) (err error) {
-	if Debug {
-		Log.Debug(fmt.Sprintf("connToChan timeout %v", t))
-	}
 	for {
 		var b []byte = make([]byte, mpl)
 		conn.SetReadDeadline(time.Now().Add(t))
@@ -253,8 +288,8 @@ func (s S5LH) ReadLH(conn *ConnPair) (err error) {
 		Log.Debug("S5LH ReadLH started")
 	}
 	err = connToChan(conn.Down, conn.UpChan, s.Deadtime, s.MaxPacketLength)
-	if Debug {
-		Log.Debug(err.Error())
+	if Debug && (nil != err) {
+		Log.Debug("S5LU ReadLH error " + err.Error())
 	}
 	return err
 }
@@ -264,12 +299,8 @@ func (s S5LH) WriteLH(conn *ConnPair) (err error) {
 		Log.Debug("S5LH WriteLH started")
 	}
 	err = chanToConn(conn.Down, conn.DownChan, s.Deadtime)
-	if Debug {
-		var errStr string
-		if nil != err {
-			errStr = err.Error()
-		}
-		Log.Debug(errStr)
+	if Debug && nil != err {
+		Log.Debug("S5LH WriteLH error " + err.Error())
 	}
 	return err
 }
@@ -302,9 +333,7 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 		if DbgCtlFlow {
 			Log.Debug("DNS lookup " + string(addr))
 		}
-		var addr1 []byte
-        atype, addr1, err = lookupDNS(addr)
-		addr = addr1
+        atype, addr, err = lookupDNS(addr)
 		if DbgCtlFlow {
 			Log.Debug(fmt.Sprintf("GetRequestType results: cmd %v atype %v addr %v port %v", cmd, atype, string(addr), port))
 		}
@@ -362,6 +391,18 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 			s.S.BindAccept(bindListener, conn)
 			// reply
 		case SOCKS_UDP_ASSOCIATE:
+			if 0x01 == atype {
+				if !net.IPv4zero.Equal(addr) {
+					conn.UDPAllowedIP = &addr
+				}
+			} else {
+				if !net.IPv6zero.Equal(addr) {
+					conn.UDPAllowedIP = &addr
+				}
+			}
+			if 0 != port {
+				conn.UDPAllowedPort = &port
+			}
 			if DbgCtlFlow || DbgUDP {
 				Log.Debug("Deal udp associate")
 			}
@@ -413,6 +454,7 @@ func (s S5LH) Deal(conn *ConnPair) (err error) {
 			if nil != err {
 				return
 			}
+			conn.UDPRunning = true
 			err = s.S.UDPRelay(conn)
 	}
 	if DbgCtlFlow {
@@ -441,7 +483,7 @@ func (s S5LH) Listen(addr *net.TCPAddr) error {
 	return nil
 }
 
-func (s S5LH) UDPReadLH(conn *ConnPair, srcAddr net.IP, srcPort uint16) (err error) {
+func (s S5LH) UDPReadLH(conn *ConnPair) (err error) {
     for conn.UDPRunning {
         var n int
 		var addr net.Addr
@@ -459,7 +501,16 @@ func (s S5LH) UDPReadLH(conn *ConnPair, srcAddr net.IP, srcPort uint16) (err err
 		}
 		var udpAddr *net.UDPAddr
 		udpAddr, err = net.ResolveUDPAddr(addr.Network(), addr.String())
-        if !udpAddr.IP.Equal(srcAddr) || (udpAddr.Port != int(srcPort)) {
+		if (nil != conn.UDPAllowedIP) && !conn.UDPAllowedIP.Equal(udpAddr.IP) {
+			if DbgUDP {
+				Log.Debug("UDP Read IP mismatch")
+			}
+			continue
+		}
+        if (nil != conn.UDPAllowedPort) && (int(*conn.UDPAllowedPort) != udpAddr.Port) {
+			if DbgUDP {
+				Log.Debug("UDP Read Port mismatch")
+			}
             continue
         }
 		if nil != err {
@@ -540,8 +591,8 @@ func (s S5UH) ReadUH(conn *ConnPair) (err error) {
 		Log.Debug("S5UH ReadUH started")
 	}
 	err = connToChan(conn.Up, conn.DownChan, s.Deadtime, s.MaxPacketLength)
-	if Debug {
-		Log.Debug(err.Error())
+	if Debug && (nil != err) {
+		Log.Debug("S5UH ReadUH error " + err.Error())
 	}
 	return err
 }
@@ -551,12 +602,8 @@ func (s S5UH) WriteUH(conn *ConnPair) (err error) {
 		Log.Debug("S5UH WriteUH started")
 	}
 	err = chanToConn(conn.Up, conn.UpChan, s.Deadtime)
-	if Debug {
-		var errStr string
-		if nil != err {
-			errStr = err.Error()
-		}
-		Log.Debug(errStr)
+	if Debug && (nil != err) {
+		Log.Debug("S5UH WriteUH error " + err.Error())
 	}
 	return err
 }
@@ -606,7 +653,7 @@ func (s S5UH) UDPReadUH(conn *ConnPair) (err error) {
 	return nil
 }
 
-func (s S5UH) UDPWritingUH(conn *ConnPair) (err error) {
+func (s S5UH) UDPWriteUH(conn *ConnPair) (err error) {
 	for conn.UDPRunning {
 		b := <-conn.UpChan
 		atype := b[0]
