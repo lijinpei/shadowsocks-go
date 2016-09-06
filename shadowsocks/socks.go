@@ -16,6 +16,8 @@ type ConnPair struct {
 	// addr/port are in network endian order
 	UpChan chan []byte
 	DownChan chan []byte
+	UDPRunning bool
+	ClientUDPAddr *net.UDPAddr
 }
 
 // SocksHalf represents half of relay server
