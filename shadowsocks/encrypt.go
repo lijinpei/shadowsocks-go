@@ -1,6 +1,7 @@
 package shadowsocks
 
 import (
+	"math/rand"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/des"
@@ -18,7 +19,8 @@ import (
 	"golang.org/x/crypto/salsa20/salsa"
 )
 
-var errEmptyPassword = errors.New("empty key")
+const ERR_EMPTY_PASSWORD = Error("Empty password")
+var R *rand
 
 func md5sum(d []byte) []byte {
 	h := md5.New()

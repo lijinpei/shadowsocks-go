@@ -6,6 +6,7 @@ import (
 	"time"
 	"strconv"
 	"fmt"
+	"math/rand"
 //	"encoding/hex"
 )
 
@@ -18,11 +19,12 @@ type SS5 struct {
 	SS5UH
 }
 
+
 func connToChan(conn *net.TCPConn, c chan []byte, t time.Duration, mpl uint, c *Cipher) (err error) {
 	for {
 		var b []byte = make([]byte, mpl)
-		conn.SetReadDeadline(time.Now().Add(t))
 		var n int
+		conn.SetReadDeadline(time.Now().Add(t))
 		n, err = conn.Read(b)
 		if io.EOF == err {
 			close(c)
@@ -76,7 +78,8 @@ type SS5LH struct {
 	Deadtime time.Duration
 	MaxPacketLength uint
 	AuthRep [2]byte
-	Cipher *Cipher
+	Method string
+	Password string
 }
 
 func (s *SS5LH) Init(cipher *Cipher) {
@@ -116,6 +119,11 @@ func (s SS5LH) Deal(conn *ConnPair) (err error) {
 	if DbgCtlFlow {
 		Log.Debug("Deal started")
 	}
+	iv := make([]byte, s.c.info.ivLen)
+	R.read(iv)
+	conn.DownCipherWrite, _ = NewCipher(s.Method, s.Password, iv)
+	_, err = conn.Down.Read(iv)
+	conn.DownCipherRead, _ = NewCipher(s.Method, s.Password, iv)
 	cmd, atype, addr, port, err := s.GetRequestType(conn)
 	if DbgCtlFlow {
 		var addrStr string
@@ -155,16 +163,13 @@ func (s SS5LH) Deal(conn *ConnPair) (err error) {
 			var bndAddr net.IP
 			var bndPort uint16
 			bndAddr, bndPort, err = s.S.Connect(atype, addr, port, conn)
-			var l2 = len(bndAddr)
-			var l1 = l2
-			var l = l2
+			var l = len(bndAddr)
 			if nil != bndAddr.To4() {
 				atype = 0x01
-				l1 = l2 - 4
+				bndAddr = bndAddr[l-4:l]
 				l = 4
 			} else {
 				atype = 0x04
-				l1 = l2 - 16
 				l = 16
 			}
 			if nil != err {
@@ -173,14 +178,22 @@ func (s SS5LH) Deal(conn *ConnPair) (err error) {
 				}
 				return err
 			}
-			repPacket := make([]byte, l + 6)
-			copy(repPacket[0:4], []byte{0x05, 0x00, 0x00, atype})
-			copy(repPacket[4:4+l], bndAddr[l1:l2])
-			copy(repPacket[4+l:], []byte{byte(bndPort >> 8), byte(bndPort & 0xff)})
+			repPacket := make([]byte, l + 3)
+			repPacket[0] = atype
+			copy(repPacket[1:l+1], bndAddr)
+			copy(repPacket[l+1:l+3], []byte{byte(bndPort >> 8), byte(bndPort & 0xff)})
 			if DbgLogPacket {
 				Log.Debug(fmt.Sprintf("Replay packet length %v packet %v", len(repPacket), repPacket))
 			}
-			_, err = conn.Down.Write(repPacket)
+			nrepPacket := make([]byte, l + 3)
+			conn.DownCipherWrite.encrypt(nrepPacketm repPacket)
+			_, err1 := conn.Down.Write(conn.DownCipherWrite.iv)
+			_, err2 := conn.Down.Write(nrepPacket)
+			if nil != err1 {
+				err = err1
+			} else {
+				err = err2
+			}
 			if nil != err {
 				return
 			}
@@ -231,7 +244,8 @@ type S5UH struct {
 	Deadtime time.Duration
 	IsRunning bool
 	MaxPacketLength uint
-	c *Cipher
+	Methid string
+	Password string
 }
 
 func (s *SS5UH) Init(c *Cipher) {
@@ -241,23 +255,12 @@ func (s *SS5UH) Init(c *Cipher) {
 	s.c = c
 }
 
-func (s SS5UH) Connect(atype byte, addr net.IP, port uint16, conn *ConnPair) (bndAddr net.IP, bndPort uint16, err error) {
+func (s SS5UH) Connect(atype byte, addr []byte, port uint16, conn *ConnPair) (bndAddr net.IP, bndPort uint16, err error) {
 	if DbgCtlFlow {
 		Log.Debug("SS5UH Connect started")
 	}
-	// TODO: ipv4-mapped ipv6 address
-	var addrStr string
-	if 0x01 == atype {
-		addrStr = net.IP(addr).String() + ":" + strconv.Itoa(int(port))
-	} else {
-		addrStr = "[" + net.IP(addr).String() + "]:" + strconv.Itoa(int(port))
-	}
-	if DbgCtlFlow {
-		Log.Debug("Connect address " + addrStr)
-	}
-	network := "tcp"
 	var newConn net.Conn
-	newConn, err = net.DialTimeout(network, addrStr, s.Deadtime)
+	newConn, err = net.DialTimeout("tcp", s.Addr, s.Deadtime)
 	if nil != err {
 		if DbgCtlFlow {
 			Log.Debug("Connect error " + err.Error())
@@ -270,6 +273,16 @@ func (s SS5UH) Connect(atype byte, addr net.IP, port uint16, conn *ConnPair) (bn
 	bndAddr = tcpAddr.IP
 	bndPort = uint16(tcpAddr.Port)
 	conn.Up = newConn.(*net.TCPConn)
+	conn.UpIV = make([]byte, s.c.info.ivLen)
+	l := len(addr)
+	b := make([]byte, 3+l)
+	nb := make([]byte, 3+l)
+	b[0] = atype
+	b[l+1] = byte(port >> 8)
+	b[l+2] = byte(port & 0xff)
+	copy(b[1,l+1], addr)
+	s.c.encrypt(nb, b)
+	_, err = conn.Up.Write(nb)
 	if DbgCtlFlow {
 		Log.Debug("Connect finished")
 		Log.Debug(fmt.Sprintf("Connect local results: addr %v port %v err %v", bndAddr, bndPort, err))
@@ -281,7 +294,7 @@ func (s SS5UH) ReadUH(conn *ConnPair) (err error) {
 	if DbgCtlFlow {
 		Log.Debug("S5UH ReadUH started")
 	}
-	err = connToChan(conn.Up, conn.DownChan, s.Deadtime, s.MaxPacketLength, s.c)
+	err = connToChan(conn.Up, conn.DownChan, s.Deadtime, s.MaxPacketLength, conn.UpCipherRead)
 	if Debug && (nil != err) {
 		Log.Debug("S5UH ReadUH error " + err.Error())
 	}
@@ -292,7 +305,7 @@ func (s SS5UH) WriteUH(conn *ConnPair) (err error) {
 	if DbgCtlFlow {
 		Log.Debug("S5UH WriteUH started")
 	}
-	err = chanToConn(conn.Up, conn.UpChan, s.Deadtime, s.c)
+	err = chanToConn(conn.Up, conn.UpChan, s.Deadtime, conn.UpCipherWrite)
 	if Debug && (nil != err) {
 		Log.Debug("S5UH WriteUH error " + err.Error())
 	}

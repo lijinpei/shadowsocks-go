@@ -181,6 +181,75 @@ func (s S5LH) Authenticate(conn * ConnPair) error {
 	return err
 }
 
+func SSGetRequestType(conn *ConnPair) (cmd, atype byte, addr net.IP, port uint16, err error) {
+	if DbgCtlFlow {
+		Log.Debug("GetRequestType started")
+	}
+	b1 := make([]byte, 1)
+	nb1 := make([]byte, 1)
+	var n int
+	n, err = conn.Down.Read(b1)
+	conn.DownCipherRead.decrypt(b1, nb1)
+	atype = b1[0]
+	if DbgCtlFlow {
+		Log.Debug("SSGetRequestType info")
+		Log.Debug("atype " + strconv.Itoa(int(atype)))
+	}
+	var nb2 []byte
+	var b2 []byte
+	switch atype {
+		case 0x01:
+			nb2 = make([]byte, 4)
+			addr = make([]byte, 4)
+			_, err = conn.Down.Read(nb2)
+			conn.DownCipherRead.decrypt(addr, nb2)
+		case 0x03:
+			nb2 := make([]byte, 1)
+			b2 := make([]byte, 1)
+			_, err = conn.Down.Read(nb2)
+			conn.DownCipherRead.decrypt(b2, nb2)
+			l := b2[0]
+			if Debug {
+				Log.Debug("Domain name length " + strconv.Itoa(int(l)))
+			}
+			nb2 = make([]byte, l)
+			addr = make([]byte, l)
+			n, err = conn.Down.Read(nb2)
+			conn.DownCipherRead.decrypt(addr, nb2)
+		case 0x04:
+			nb2 = make([]byte, 16)
+			addr = make([]byte, 16)
+			_, err = conn.Down.Read(nb2)
+			conn.DownCipherRead.decrypt(addr, nb2)
+		default:
+			if DbgCtlFlow {
+				Log.Debug("SSGetRequest wrong atype")
+				}
+			err = Error("GetRequest wrong atype")
+			return
+	}
+	nb2 = make([]byte, 2)
+	b2 = make([]byte, 2)
+	_, err = conn,Down.Read(nb2)
+	conn.DownCipherRead.decrypt(b2, nb2)
+	port = (int(b2[0]) << 8) | int(b2[1])
+	if DbgCtlFlow {
+		Log.Debug("Getrequest finished")
+		var errStr string
+		if nil != err {
+			errStr = err.Error()
+		}
+		var addrStr string
+		if atype != 0x03 {
+			addrStr = addr.String()
+		} else {
+			addrStr = string(addr)
+		}
+		Log.Debug(fmt.Sprintf("GetRequest results cmd %v atype %v addr %v port %v err %v", cmd, atype, addrStr, port, errStr))
+	}
+	return
+}
+
 func GetRequestType(conn *ConnPair) (cmd, atype byte, addr net.IP, port uint16, err error) {
 	if DbgCtlFlow {
 		Log.Debug("GetRequestType started")
@@ -539,6 +608,9 @@ func (s S5UH) Connect(atype byte, addr net.IP, port uint16, conn *ConnPair) (bnd
 	bndAddr = tcpAddr.IP
 	bndPort = uint16(tcpAddr.Port)
 	conn.Up = newConn.(*net.TCPConn)
+	conn.UpIV = make([]byte, s.c.info.ivLen)
+	_, err = R.Read(conn.UpIV)
+	b = 
 	if DbgCtlFlow {
 		Log.Debug("Connect finished")
 		Log.Debug(fmt.Sprintf("Connect local results: addr %v port %v err %v", bndAddr, bndPort, err))
@@ -584,70 +656,6 @@ func (s S5UH) BindAccept(listener *net.TCPListener, conn *ConnPair) error {
 	newConn, err := listener.Accept()
 	conn.Up = newConn.(*net.TCPConn)
 	return err
-}
-
-func (s S5UH) UDPReadUH(conn *ConnPair) (err error) {
-	for conn.UDPRunning {
-		var addr *net.UDPAddr
-		var n int
-		var b []byte = make([]byte, s.MaxPacketLength + 22)
-		conn.UDPUp.SetReadDeadline(time.Now().Add(s.Deadtime))
-		n, addr, err = conn.UDPUp.ReadFromUDP(b[22:])
-		if nil != err {
-			return
-		}
-		addr4 := addr.IP.To4()
-		b[20] = byte(addr.Port >> 8)
-		b[21] = byte(addr.Port & 0xff)
-		if nil != addr4 {
-			copy(b[16:20], addr4)
-			b[15] = 0x01
-			b = b[15:22+n]
-		} else {
-			copy(b[4:20], addr.IP)
-			b[3] = 0x04
-			b = b[3:22+n]
-		}
-		conn.DownChan <- b
-	}
-	return nil
-}
-
-func (s S5UH) UDPWriteUH(conn *ConnPair) (err error) {
-	for conn.UDPRunning {
-		b := <-conn.UpChan
-		atype := b[0]
-		//TODO: what is ipv6 zone?
-		addr := &net.UDPAddr{}
-		switch atype {
-		case 0x01:
-			addr.IP = b[1:5]
-			addr.Port = (int(b[5]) << 8) | int(b[6])
-			go func() {
-				conn.UDPUp.SetWriteDeadline(time.Now().Add(s.Deadtime))
-				conn.UDPUp.WriteToUDP(b[7:], addr)
-			} ()
-		case 0x04:
-			addr.IP = b[1:17]
-			addr.Port = (int(b[17]) << 8) | int(b[18])
-			go func() {
-				conn.UDPUp.SetWriteDeadline(time.Now().Add(s.Deadtime))
-				conn.UDPUp.WriteToUDP(b[19:], addr)
-			} ()
-		case 0x03:
-			var ip []byte
-			var l byte
-			l = b[1]
-			addr.Port = (int(b[l+1]) << 8) | int(b[l + 2])
-			_, ip, err = lookupDNS(b[1:1+l])
-			addr.IP = net.IP(ip)
-			go func() {
-				conn.UDPUp.SetWriteDeadline(time.Now().Add(s.Deadtime))
-				conn.UDPUp.WriteToUDP(b[l+3:], addr)
-			} ()
-		}
-	}
-	return
 }
 
 func (s *S5UH) SetDeadline(t time.Duration) error {
