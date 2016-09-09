@@ -185,6 +185,7 @@ func NewCipher(method, password string) (c *Cipher, err error) {
 	if password == "" {
 		return nil, errEmptyPassword
 	}
+/*
 	var ota bool
 	if strings.HasSuffix(strings.ToLower(method), "-auth") {
 		method = method[:len(method)-5] // len("-auth") = 5
@@ -192,6 +193,7 @@ func NewCipher(method, password string) (c *Cipher, err error) {
 	} else {
 		ota = false
 	}
+*/
 	mi, ok := cipherMethod[method]
 	if !ok {
 		return nil, errors.New("Unsupported encryption method: " + method)
@@ -204,7 +206,7 @@ func NewCipher(method, password string) (c *Cipher, err error) {
 	if err != nil {
 		return nil, err
 	}
-	c.ota = ota
+	c.ota = false
 	return c, nil
 }
 

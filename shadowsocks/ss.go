@@ -97,7 +97,7 @@ func (s SS5LH) ReadLH(conn *ConnPair) (err error) {
 	if DbgCtlFlow {
 		Log.Debug("S5LH ReadLH started")
 	}
-	err = connToChanCipher(conn.Down, conn.UpChan, s.Deadtime, s.MaxPacketLength, s.Cipher)
+	err = connToChanCipher(conn.Down, conn.UpChan, s.Deadtime, s.MaxPacketLength, conn.DownCipherRead)
 	if Debug && (nil != err) {
 		Log.Debug("S5LU ReadLH error " + err.Error())
 	}
@@ -108,7 +108,7 @@ func (s SS5LH) WriteLH(conn *ConnPair) (err error) {
 	if DbgCtlFlow {
 		Log.Debug("S5LH WriteLH started")
 	}
-	err = chanToConn(conn.Down, conn.DownChan, s.Deadtime, s.Cipher)
+	err = chanToConn(conn.Down, conn.DownChan, s.Deadtime, conn.DownCipherWrite)
 	if Debug && nil != err {
 		Log.Debug("S5LH WriteLH error " + err.Error())
 	}
@@ -229,7 +229,7 @@ func (s SS5LH) Listen(addr *net.TCPAddr) error {
 		if DbgCtlFlow {
 			Log.Debug("Accept connection")
 		}
-		go s.Deal(&ConnPair{Down:conn, Up:nil, UpChan:make(chan []byte, 20), DownChan:make(chan []byte, 20)})
+		go s.Deal(&ConnPair{Down:conn, UpChan:make(chan []byte, 20), DownChan:make(chan []byte, 20)})
 	}
 	return nil
 }
@@ -244,23 +244,33 @@ type S5UH struct {
 	Deadtime time.Duration
 	IsRunning bool
 	MaxPacketLength uint
-	Methid string
+	Method string
 	Password string
+	Atype byte
+	ServerIP net.IP
+	ServerPort uint16
 }
 
-func (s *SS5UH) Init(c *Cipher) {
+func (s *SS5UH) Init(met, pas string) {
 	s.MaxPacketLength =256
 	s.IsRunning = true
 	s.Deadtime, _ = time.ParseDuration("200s")
-	s.c = c
+	s.Method = met
+	s.Password = pas
 }
 
 func (s SS5UH) Connect(atype byte, addr []byte, port uint16, conn *ConnPair) (bndAddr net.IP, bndPort uint16, err error) {
 	if DbgCtlFlow {
 		Log.Debug("SS5UH Connect started")
 	}
+	var serverAddr string
+	if 0x01 == s.Atype {
+		serverAddr = s.ServerIP.String() + ":" + strconv.Itoa(s.ServerPort)
+	} else {
+		serverAddr = "[" + s.ServerIP.String() + "]:" + strconv.Itoa(s.ServerPort)
+	}
 	var newConn net.Conn
-	newConn, err = net.DialTimeout("tcp", s.Addr, s.Deadtime)
+	newConn, err = net.DialTimeout("tcp", serverAddr, s.Deadtime)
 	if nil != err {
 		if DbgCtlFlow {
 			Log.Debug("Connect error " + err.Error())
@@ -281,12 +291,28 @@ func (s SS5UH) Connect(atype byte, addr []byte, port uint16, conn *ConnPair) (bn
 	b[l+1] = byte(port >> 8)
 	b[l+2] = byte(port & 0xff)
 	copy(b[1,l+1], addr)
-	s.c.encrypt(nb, b)
-	_, err = conn.Up.Write(nb)
+	conn.UpCipherWrite,_ = NewCipher(s.Method, s.Password)
+	iv := make([]byte, conn.UpCipherWrite.info.ivLen)
+	iv, _  = conn.UpCipherWrite.Init()
+	conn.UpCipherWrite.encrypt(nb, b)
+	_, err1 := conn.Up.Write(iv)
+	_, err2 = conn.Up.Write(nb)
+	if nil != err1 {
+		err = err1
+	} else {
+		err = err2
+	}
 	if DbgCtlFlow {
-		Log.Debug("Connect finished")
+		Log.Debug("Connect write to server finished")
 		Log.Debug(fmt.Sprintf("Connect local results: addr %v port %v err %v", bndAddr, bndPort, err))
 	}
+	if nil != err {
+		return
+	}
+	_, err = conn.Up.Read(iv)
+	conn.UpCipherRead, _ = NewCipher(s.Method, s.Password)
+	con.UpCipherRead.iv = iv
+	conn.UpCipherRead.Init()
 	return
 }
 
